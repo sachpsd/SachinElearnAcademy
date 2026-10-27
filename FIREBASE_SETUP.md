@@ -7,7 +7,7 @@
 - Firestore: production mode, `asia-southeast1` (Singapore).
 - Firebase Storage is not enabled. Do not upgrade to Blaze without approval.
 - The site is published at <https://sachpsd.github.io/SachinElearnAcademy/> from the `main` branch; Firebase Hosting is not configured.
-- The client configuration is in `firebase-config.js`. It identifies the web app and is not an Admin SDK credential. Restrict its API key to the deployed web domains in Google Cloud Console.
+- The client configuration is in `firebase-config.js`. It identifies the web app and is not an Admin SDK credential. Its API key is restricted to the production GitHub Pages referrer.
 
 ## Current connection status
 
@@ -17,8 +17,8 @@ The app is live. Firebase account sign-in is **awaiting the administrator's pass
 
 - The Firestore rules have been published from the Firebase Console. All five composite indexes listed in `firestore.indexes.json` are enabled.
 - The administrator Firebase Authentication account and trusted Firestore profile have been created for the email provided by the owner. A password-reset email has been sent; the administrator must use it to set a password before signing in.
-- Firebase's Authorized domains form rejected `sachpsd.github.io`; email/password sign-in should be tested after the admin completes the password reset. Do not claim login is working until that test succeeds.
-- The Firebase Web API key has not been restricted to the production site domain.
+- A password-reset email has been sent to the administrator. The live site's Firebase Auth endpoint responds from the GitHub Pages origin, but successful sign-in with the administrator's chosen password has not been verified.
+- The Firebase Web API key is restricted to `https://sachpsd.github.io/*` as an HTTP referrer. Its API restriction list remains unchanged.
 - Existing localStorage accounts and records were not migrated.
 - File uploads remain in browser IndexedDB. They are only available in the browser that uploaded them.
 
@@ -53,7 +53,7 @@ The app is live. Firebase account sign-in is **awaiting the administrator's pass
 
    This initial profile must be created by a trusted administrator in the console. The public website must not allow users to grant themselves admin privileges.
 
-4. In Google Cloud Console, restrict the Firebase Web API key to the production site and the Firebase APIs the client uses. Avoid broad API-key restrictions that could break Authentication or Firestore. Firebase Console rejected `sachpsd.github.io` when adding it as an Authorized domain, so verify email/password sign-in from the live GitHub Pages URL before onboarding users.
+4. The Firebase Web API key is restricted in Google Cloud Console to the production referrer `https://sachpsd.github.io/*`. Verify sign-in from the live GitHub Pages URL after completing the password reset.
 
 5. After completing the password reset, verify admin login, class and subject setup, teacher/student provisioning, password changes, membership-based access, scheduled release times, and live-class visibility before onboarding students.
 
