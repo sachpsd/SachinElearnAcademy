@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#28234f">
+    <title>Sachinelearn Academy | Learn for what’s next</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+    <script src="app.js" defer></script>
+  </head>
+  <body>
+    <header class="site-header" id="site-header">
+      <a class="brand" href="#" aria-label="Sachinelearn Academy home">
+        <span class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></span>
+        <span class="brand-name">sachinelearn<span>academy</span></span>
+      </a>
+      <nav class="header-nav" aria-label="Main navigation">
+        <a href="#programs">Programs</a>
+        <a href="#how-it-works">How it works</a>
+        <a href="#login" class="nav-signin">Sign in <span aria-hidden="true">↗</span></a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="landing" id="landing">
+        <div class="hero-copy">
+          <div class="eyebrow"><span class="eyebrow-dot"></span> YOUR FUTURE, IN YOUR HANDS</div>
+          <h1>Learn boldly.<br><span>Go further.</span></h1>
+          <p class="hero-description">Find your focus, build skills that matter, and make progress you can feel—one lesson at a time.</p>
+          <div class="hero-actions"><a class="button button-dark hero-primary" href="#login">Start learning <span aria-hidden="true">→</span></a><a class="hero-secondary" href="#programs">Explore subjects <span aria-hidden="true">↘</span></a></div>
+          <div class="hero-proof">
+            <span class="proof-star" aria-hidden="true">✦</span>
+            <p><strong>Your learning space, all in one place.</strong><br>Lessons, activities and teacher support, ready when you are.</p>
+          </div>
+        </div>
+
+        <div class="hero-art" aria-label="A preview of the student learning dashboard">
+          <div class="hero-glow"></div>
+          <div class="hero-float-label"><span>✦</span> YOUR NEXT CHAPTER</div>
+          <div class="learning-preview">
+            <div class="preview-top"><span class="preview-logo"><i></i><i></i><i></i></span><span>MY LEARNING SPACE</span><span class="preview-avatar">S</span></div>
+            <div class="preview-welcome"><span>READY WHEN YOU ARE</span><strong>Small steps.<br>Big possibilities.</strong><p>Keep your momentum going.</p></div>
+            <div class="preview-progress"><div class="preview-progress-heading"><span>THIS WEEK</span><strong>Week 01</strong></div><div class="preview-progress-track"><span></span></div><small>Your next lesson is waiting</small></div>
+            <div class="preview-subjects"><span class="preview-subject-icon">✳</span><span><small>YOUR SUBJECT</small><strong>Discover something new</strong></span><span class="preview-chevron">↗</span></div>
+          </div>
+          <div class="hero-art-orbit hero-art-orbit-one"></div>
+          <div class="hero-art-orbit hero-art-orbit-two"></div>
+          <div class="hero-art-star">✳</div>
+          <div class="hero-art-caption">A little progress adds up.</div>
+        </div>
+      </section>
+
+      <section class="learning-promise" aria-label="What you can do at Sachinelearn Academy">
+        <div><span class="promise-icon">01</span><span><strong>Learn with purpose</strong><small>Focus on the subjects that move you.</small></span></div>
+        <div><span class="promise-icon">02</span><span><strong>Stay on track</strong><small>See your lessons and weekly progress.</small></span></div>
+        <div><span class="promise-icon">03</span><span><strong>Keep growing</strong><small>Get guidance from your teachers.</small></span></div>
+      </section>
+
+      <section class="access-section" id="login">
+        <div class="section-intro">
+          <span class="eyebrow"><span class="eyebrow-dot"></span> YOUR LEARNING SPACE</span>
+          <h2>Good to have<br>you <span>here.</span></h2>
+          <p>Sign in to pick up where you left off.</p>
+          <div class="access-decoration" aria-hidden="true"><span>✳</span><span>✳</span><span>✳</span></div>
+        </div>
+
+        <div class="login-card">
+          <div class="login-card-heading">
+            <span class="card-kicker">WELCOME BACK</span>
+            <h2>Sign in to your account</h2>
+            <p>Choose your account type to continue.</p>
+          </div>
+          <div class="role-tabs" role="tablist" aria-label="Choose account type">
+            <button type="button" class="role-tab active" id="tab-student" data-role="student" role="tab" aria-selected="true">Student</button>
+            <button type="button" class="role-tab" id="tab-teacher" data-role="teacher" role="tab" aria-selected="false">Teacher</button>
+            <button type="button" class="role-tab" id="tab-admin" data-role="admin" role="tab" aria-selected="false">Admin</button>
+          </div>
+          <form id="login-form" class="form-stack">
+            <div class="login-identity" id="login-name-field">
+              <label for="login-name" id="login-name-label">Student name</label>
+              <input id="login-name" name="name" type="text" placeholder="Enter your student name" autocomplete="name" required>
+            </div>
+            <div class="login-identity" id="login-id-field">
+              <label for="login-id" id="login-id-label">FEMIS ID</label>
+              <input id="login-id" name="identifier" type="text" placeholder="Enter your FEMIS ID" autocomplete="username" required>
+            </div>
+            <div class="password-label">
+              <label for="login-password">Password</label>
+            </div>
+            <input id="login-password" name="password" type="password" placeholder="Enter your password" autocomplete="current-password" required>
+            <p id="login-error" class="form-message" aria-live="polite"></p>
+            <button class="button button-dark login-submit" type="submit">Sign in <span aria-hidden="true">→</span></button>
+          </form>
+          <p class="login-help">Need an account? Ask your academy administrator to register you.</p>
+        </div>
+      </section>
+
+      <section class="programs-section" id="programs">
+        <div class="programs-heading">
+          <div><span class="eyebrow"><span class="eyebrow-dot"></span> FIND YOUR DIRECTION</span><h2>Learn something<br><span>that moves you.</span></h2></div>
+          <p>Build your confidence, explore new ideas, and take your next step with a learning experience made for you.</p>
+        </div>
+        <div class="program-grid" id="program-grid"></div>
+      </section>
+
+      <section class="steps-section" id="how-it-works">
+        <div class="steps-heading"><span class="eyebrow"><span class="eyebrow-dot"></span> YOUR JOURNEY STARTS HERE</span><h2>One step at a time.<br><span>All the way forward.</span></h2></div>
+        <div class="steps-grid">
+          <article class="step-item"><span class="step-number">01</span><h3>Find your focus</h3><p>Explore a subject that sparks your curiosity and fits your goals.</p></article>
+          <article class="step-item"><span class="step-number">02</span><h3>Learn at your pace</h3><p>Follow your courses and stay on top of assignments in your portal.</p></article>
+          <article class="step-item"><span class="step-number">03</span><h3>Keep moving forward</h3><p>Build momentum with guidance from teachers and your community.</p></article>
+        </div>
+      </section>
+    </main>
+    <footer class="site-footer"><a class="brand footer-brand" href="#"><span class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></span><span class="brand-name">sachinelearn<span>academy</span></span></a><span>Make room for what’s next.</span><span>© <span id="current-year"></span> Sachinelearn Academy</span></footer>
+
+    <main class="portal hidden" id="portal">
+      <aside class="portal-sidebar">
+        <a class="brand portal-brand" href="#" aria-label="Sachinelearn Academy"><span class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></span><span class="brand-name">sachinelearn<span>academy</span></span></a>
+        <p class="sidebar-label">YOUR SPACE</p>
+        <nav class="portal-nav" id="portal-nav" aria-label="Portal navigation"></nav>
+        <div class="sidebar-bottom"><div class="sidebar-help"><span>✳</span><div><strong>Keep showing up.</strong><p>Every small step counts.</p></div></div><button class="signout-button" id="signout-button" type="button"><span aria-hidden="true">↗</span> Sign out</button></div>
+      </aside>
+      <section class="portal-main">
+        <header class="portal-topbar"><div class="breadcrumb">SACHINELEARN <span>/</span> <strong id="portal-breadcrumb">OVERVIEW</strong></div><div class="portal-user"><span class="user-avatar" id="user-avatar"></span><span class="portal-user-name" id="portal-user-name"></span><span class="user-role" id="portal-user-role"></span></div></header>
+        <div id="portal-content" class="portal-content"></div>
+      </section>
+    </main>
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  </body>
+</html>

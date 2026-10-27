@@ -1,0 +1,62 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function admin() {
+      return signedIn() && request.auth.token.role == "admin";
+    }
+
+    function member(classId) {
+      return signedIn()
+        && exists(/databases/$(database)/documents/classes/$(classId)/members/$(request.auth.uid));
+    }
+
+    function teacher(classId) {
+      return member(classId)
+        && get(/databases/$(database)/documents/classes/$(classId)/members/$(request.auth.uid)).data.role == "teacher";
+    }
+
+    function subjectMember(classId, subjectId) {
+      return member(classId)
+        && get(/databases/$(database)/documents/classes/$(classId)/members/$(request.auth.uid)).data.subjectIds.hasAny([subjectId]);
+    }
+
+    match /users/{userId} {
+      allow read: if admin() || (signedIn() && request.auth.uid == userId);
+      allow write: if admin();
+    }
+
+    match /classes/{classId} {
+      allow read: if admin() || member(classId);
+      allow create, update, delete: if admin();
+
+      match /members/{userId} {
+        allow read: if admin() || (signedIn() && request.auth.uid == userId);
+        allow write: if admin();
+      }
+    }
+
+    match /materials/{materialId} {
+      allow read: if admin()
+        || ((!('availableAt' in resource.data) || resource.data.availableAt <= request.time)
+          && subjectMember(resource.data.classId, resource.data.subjectId));
+      allow create: if signedIn()
+        && teacher(request.resource.data.classId)
+        && request.resource.data.teacherUid == request.auth.uid;
+      allow update, delete: if admin()
+        || (teacher(resource.data.classId) && resource.data.teacherUid == request.auth.uid);
+    }
+
+    match /liveClasses/{liveClassId} {
+      allow read: if admin() || subjectMember(resource.data.classId, resource.data.subjectId);
+      allow create: if signedIn()
+        && teacher(request.resource.data.classId)
+        && request.resource.data.teacherUid == request.auth.uid;
+      allow update, delete: if admin()
+        || (teacher(resource.data.classId) && resource.data.teacherUid == request.auth.uid);
+    }
+  }
+}
