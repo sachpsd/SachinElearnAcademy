@@ -550,9 +550,9 @@ function renderAccountTable(users) {
     return `<div class="empty-state">No ${roleLabel} profiles have been registered yet.<br>Use the registration button above to add one.</div>`;
   }
   const teacherHint = users.length
-    ? `<p class="portal-subtitle account-assignment-hint">${users.every((account) => account.role === "student") ? "Select Assign to choose a class, teacher and subjects for a student. Sign-in IDs are fixed; users change their passwords themselves." : "Select Edit to change a name. Double-click a name to edit class and subject assignments."}</p>`
+    ? `<p class="portal-subtitle account-assignment-hint">${users.every((account) => account.role === "student") ? "Select Assign to choose a class, teacher and subjects for a student. Sign-in IDs are fixed; users change their passwords themselves." : "Select Assign to choose a teacher’s class, subjects and students. Use Deactivate or Reactivate to control teacher access."}</p>`
     : "";
-  return `${teacherHint}<div class="table-wrap"><table class="data-table"><thead><tr><th>Name</th><th>${users.some((account) => account.role === "teacher") ? "FEMIS ID / TPF number" : "FEMIS ID"}</th><th>Role</th><th>Class</th><th>Actions</th></tr></thead><tbody>${users.map((account) => `<tr><td class="table-name">${account.disabled ? escapeHTML(account.name) : `<button class="teacher-assignment-trigger" type="button" data-action="${account.role === "teacher" ? "edit-teacher" : "edit-student"}" data-identifier="${escapeHTML(accountIdentifier(account))}" title="Double-click to edit class and subject assignments">${escapeHTML(account.name)}</button>`}</td><td class="table-muted">${escapeHTML(accountIdentifier(account) || "Not set")}</td><td><span class="status-pill">${escapeHTML(account.disabled ? `${account.role} · deactivated` : account.role)}</span></td><td class="table-muted">${escapeHTML(getAccountClass(account)?.name || "Not assigned")}</td><td><div class="account-row-actions">${account.disabled ? `<button class="icon-button" type="button" data-action="reactivate-account" data-identifier="${escapeHTML(accountIdentifier(account))}" data-account-role="${escapeHTML(account.role)}">Reactivate</button>` : `${account.role === "student" ? `<button class="icon-button" type="button" data-action="assign-student" data-identifier="${escapeHTML(account.femisId)}">Assign</button>` : ""}<button class="icon-button" type="button" data-action="edit-account" data-account-role="${escapeHTML(account.role)}" data-identifier="${escapeHTML(accountIdentifier(account) || "")}">Edit</button><button class="icon-button" type="button" data-action="remove-account" data-account-role="${escapeHTML(account.role)}" data-identifier="${escapeHTML(accountIdentifier(account) || account.email || "")}" aria-label="Deactivate ${escapeHTML(account.name)}">Deactivate</button>`}</div></td></tr>`).join("")}</tbody></table></div>`;
+  return `${teacherHint}<div class="table-wrap"><table class="data-table"><thead><tr><th>Name</th><th>${users.some((account) => account.role === "teacher") ? "FEMIS ID / TPF number" : "FEMIS ID"}</th><th>Role</th><th>Class</th><th>Actions</th></tr></thead><tbody>${users.map((account) => `<tr><td class="table-name">${escapeHTML(account.name)}</td><td class="table-muted">${escapeHTML(accountIdentifier(account) || "Not set")}</td><td><span class="status-pill">${escapeHTML(account.disabled ? `${account.role} · deactivated` : account.role)}</span></td><td class="table-muted">${escapeHTML(getAccountClass(account)?.name || "Not assigned")}</td><td><div class="account-row-actions">${account.disabled ? `<button class="icon-button" type="button" data-action="reactivate-account" data-identifier="${escapeHTML(accountIdentifier(account))}" data-account-role="${escapeHTML(account.role)}">Reactivate</button>` : `${account.role === "teacher" ? `<button class="icon-button" type="button" data-action="assign-teacher" data-identifier="${escapeHTML(account.tpfNumber)}">Assign</button>` : `<button class="icon-button" type="button" data-action="assign-student" data-identifier="${escapeHTML(account.femisId)}">Assign</button>`}<button class="icon-button" type="button" data-action="edit-account" data-account-role="${escapeHTML(account.role)}" data-identifier="${escapeHTML(accountIdentifier(account) || "")}">Edit</button><button class="icon-button" type="button" data-action="remove-account" data-account-role="${escapeHTML(account.role)}" data-identifier="${escapeHTML(accountIdentifier(account) || account.email || "")}" aria-label="Deactivate ${escapeHTML(account.name)}">Deactivate</button>`}</div></td></tr>`).join("")}</tbody></table></div>`;
 }
 
 function renderAdminClasses() {
@@ -586,6 +586,7 @@ function wirePortalActions() {
         renderPortal();
       }
       if (action === "assign-student") showStudentAssignmentModal(button.dataset.identifier);
+      if (action === "assign-teacher") showTeacherAssignmentModal(button.dataset.identifier);
       if (action === "new-class") showClassModal();
       if (action === "new-subject") showSubjectModal(button.dataset.classId || "");
       if (action === "new-material") showMaterialModal();
@@ -600,25 +601,7 @@ function wirePortalActions() {
       if (action === "reactivate-account") await reactivateAccount(button.dataset.accountRole, button.dataset.identifier);
       if (action === "remove-class") await removeClass(button.dataset.classId);
       if (action === "remove-subject") await removeSubject(button.dataset.classId, button.dataset.subjectId);
-      if (action === "edit-teacher") return;
-      if (action === "edit-student") return;
     });
-    if (button.dataset.action === "edit-teacher") {
-      button.addEventListener("dblclick", () => showTeacherAssignmentModal(button.dataset.identifier));
-      button.addEventListener("keydown", (event) => {
-        if (event.key !== "Enter" && event.key !== " ") return;
-        event.preventDefault();
-        showTeacherAssignmentModal(button.dataset.identifier);
-      });
-    }
-    if (button.dataset.action === "edit-student") {
-      button.addEventListener("dblclick", () => showStudentAssignmentModal(button.dataset.identifier));
-      button.addEventListener("keydown", (event) => {
-        if (event.key !== "Enter" && event.key !== " ") return;
-        event.preventDefault();
-        showStudentAssignmentModal(button.dataset.identifier);
-      });
-    }
   });
 }
 
