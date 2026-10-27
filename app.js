@@ -5,10 +5,10 @@ const STORAGE_KEYS = {
   liveClasses: "sachinelearn.liveclasses.v1",
 };
 
-let accounts = readStorage(STORAGE_KEYS.accounts, []);
-let classes = readStorage(STORAGE_KEYS.classes, []);
-let materials = readStorage(STORAGE_KEYS.materials, []);
-let liveClasses = readStorage(STORAGE_KEYS.liveClasses, []);
+let accounts = [];
+let classes = [];
+let materials = [];
+let liveClasses = [];
 let activeRole = "student";
 let currentUser = null;
 let currentView = "overview";
@@ -22,22 +22,8 @@ const escapeHTML = (value) => String(value).replace(/[&<>"']/g, (character) => (
   "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
 })[character]);
 
-function readStorage(key, fallback) {
-  try {
-    const stored = localStorage.getItem(key);
-    return stored ? JSON.parse(stored) : fallback;
-  } catch {
-    return fallback;
-  }
-}
-
-function saveStorage(key, value) {
-  try {
-    localStorage.setItem(key, JSON.stringify(value));
-  } catch {
-    showToast("Could not save your changes in this browser. Check available storage.");
-    throw new Error(`Unable to save ${key} to local storage`);
-  }
+async function saveStorage(key, value) {
+  await window.SachinelearnFirebase.writeRecords(key, value);
 }
 
 function openAttachmentDatabase() {
@@ -170,33 +156,49 @@ function setActiveRole(role) {
   const isAdmin = role === "admin";
   const nameField = $("#login-name-field");
   const idField = $("#login-id-field");
-  nameField.classList.toggle("hidden", isAdmin);
+  nameField.classList.remove("hidden");
   idField.classList.toggle("hidden", isAdmin);
-  $("#login-name").required = !isAdmin;
+  $("#login-name").required = true;
   $("#login-id").required = !isAdmin;
-  $("#login-name").disabled = isAdmin;
+  $("#login-name").disabled = false;
   $("#login-id").disabled = isAdmin;
-  $("#login-name-label").textContent = role === "teacher" ? "Teacher name" : "Student name";
-  $("#login-name").placeholder = role === "teacher" ? "Enter your teacher name" : "Enter your student name";
+  $("#login-name-label").textContent = isAdmin ? "Admin email" : role === "teacher" ? "Teacher name" : "Student name";
+  $("#login-name").placeholder = isAdmin ? "Enter your admin email" : role === "teacher" ? "Enter your teacher name" : "Enter your student name";
+  $("#login-name").type = isAdmin ? "email" : "text";
+  $("#login-name").autocomplete = isAdmin ? "username" : "name";
   $("#login-id-label").textContent = role === "teacher" ? "TPF number" : "FEMIS ID";
   $("#login-id").placeholder = role === "teacher" ? "Enter your TPF number" : "Enter your FEMIS ID";
   $("#login-password").autocomplete = isAdmin ? "current-password" : "current-password";
 }
 
-function signIn(event) {
+async function signIn(event) {
   event.preventDefault();
-  const password = $("#login-password").value;
-  const account = activeRole === "admin"
-    ? password === "1234" ? { name: "Academy Admin", role: "admin" } : null
-    : accounts.find((item) => item.role === activeRole
-      && item.name.trim().toLowerCase() === $("#login-name").value.trim().toLowerCase()
-      && normalizedIdentifier(accountIdentifier(item)) === normalizedIdentifier($("#login-id").value)
-      && item.password === password);
-  if (!account) {
-    $("#login-error").textContent = "We couldn’t find a matching account. Check your details and account type.";
+  const submitButton = $('button[type="submit"]', event.currentTarget);
+  submitButton.disabled = true;
+  $("#login-error").textContent = "";
+  try {
+    const data = await window.SachinelearnFirebase.signIn(
+      activeRole,
+      $("#login-name").value,
+      $("#login-id").value,
+      $("#login-password").value,
+    );
+    currentUser = data.user;
+    accounts = data.accounts;
+    classes = data.classes;
+    materials = data.materials;
+    liveClasses = data.liveClasses;
+  } catch (error) {
+    const messages = {
+      "auth/invalid-credential": "The email or password is incorrect.",
+      "auth/invalid-email": "Enter a valid admin email address.",
+      "auth/too-many-requests": "Too many sign-in attempts. Wait a little and try again.",
+      "auth/network-request-failed": "Firebase could not be reached. Check your internet connection.",
+    };
+    $("#login-error").textContent = messages[error.code] || error.message || "Could not sign in. Check your details and try again.";
+    submitButton.disabled = false;
     return;
   }
-  currentUser = account;
   currentView = "overview";
   $("#landing").classList.add("hidden");
   $("#site-header").classList.add("hidden");
@@ -204,9 +206,16 @@ function signIn(event) {
   $("#portal").classList.remove("hidden");
   renderPortal();
   window.scrollTo({ top: 0, behavior: "smooth" });
+  submitButton.disabled = false;
 }
 
-function signOut() {
+async function signOut() {
+  try {
+    await window.SachinelearnFirebase.signOut();
+  } catch (error) {
+    showToast(error.message || "Could not sign out. Please try again.");
+    return;
+  }
   currentUser = null;
   $("#portal").classList.add("hidden");
   $("#landing").classList.remove("hidden");
@@ -230,7 +239,7 @@ function renderPortal() {
   $("#portal-user-role").textContent = currentUser.role;
   $("#user-avatar").textContent = initials(currentUser.name);
   const navItems = currentUser.role === "admin"
-    ? [["overview", "◫", "Overview"], ["classes", "▤", "Classes & subjects"], ["users", "♙", "Accounts"]]
+    ? [["overview", "◫", "Overview"], ["classes", "▤", "Classes & subjects"], ["users", "♙", "Accounts"], ["password", "⌑", "Change password"]]
     : currentUser.role === "teacher"
       ? [["overview", "◫", "Overview"], ["classes", "▤", "My class"], ["materials", "✎", "Teaching materials"], ["live-classes", "◉", "Live classes"], ["password", "⌑", "Change password"]]
       : [["overview", "◫", "Overview"], ["classes", "▤", "My class"], ["materials", "✎", "Class materials"], ["live-classes", "◉", "Live classes"], ["password", "⌑", "Change password"]];
@@ -297,7 +306,7 @@ function teacherSubjects(teacher) {
 }
 
 function teacherStudents(teacher) {
-  const students = accounts.filter((account) => account.role === "student"
+  const students = accounts.filter((account) => !account.disabled && account.role === "student"
     && account.classId === teacher.classId
     && (account.teacherTpf === teacher.tpfNumber
       || (!account.teacherTpf && Array.isArray(teacher.studentIds) && teacher.studentIds.includes(account.femisId))));
@@ -463,7 +472,7 @@ function renderLiveClassesView() {
       return `<article class="live-class-card"><div class="live-class-details"><span class="course-tag">${escapeHTML(subject?.name || "Subject")}</span><h3>${escapeHTML(session.title)}</h3><p>${escapeHTML(session.description || "Join your teacher for this live class.")}</p><small>${escapeHTML(myClass?.name || "Class")} · ${escapeHTML(session.termName || `Term ${session.termNumber || "—"}`)}, Week ${escapeHTML(session.weekNumber || "—")} · ${escapeHTML(new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(session.startsAt))} · ${escapeHTML(session.teacherName)}</small></div><button class="button button-dark" type="button" data-action="join-live-class" data-live-class-id="${escapeHTML(session.id)}">Join class ↗</button></article>`;
     }).join("")}</div>`
     : `<div class="empty-state">${teacher ? "You have not scheduled any live classes yet." : "Your teacher has not scheduled a live class for your subjects yet."}</div>`;
-  return `${heading}<section class="portal-panel"><div class="panel-heading"><h3>${myClass ? `${escapeHTML(myClass.name)} online classes` : "Online classes"}</h3><span>${sessions.length} scheduled</span></div>${cards}<p class="live-class-notice">Video calls use the external Jitsi Meet service. Anyone with a room link may be able to join. Session listings are currently saved in this browser; Firebase setup is required to share them across devices.</p></section>`;
+  return `${heading}<section class="portal-panel"><div class="panel-heading"><h3>${myClass ? `${escapeHTML(myClass.name)} online classes` : "Online classes"}</h3><span>${sessions.length} scheduled</span></div>${cards}<p class="live-class-notice">Video calls use the external Jitsi Meet service. Anyone with a room link may be able to join. Class schedules are shared through Firebase.</p></section>`;
 }
 
 function renderStudentView() {
@@ -506,8 +515,10 @@ function renderTeacherView() {
 }
 
 function renderAdminView() {
-  const students = accounts.filter((account) => account.role === "student").length;
-  const teachers = accounts.filter((account) => account.role === "teacher").length;
+  if (currentView === "password") return renderPasswordView();
+  const activeAccounts = accounts.filter((account) => !account.disabled);
+  const students = activeAccounts.filter((account) => account.role === "student").length;
+  const teachers = activeAccounts.filter((account) => account.role === "teacher").length;
   if (currentView === "classes") return renderAdminClasses();
   if (currentView === "teacher-profiles" || currentView === "student-profiles") {
     const role = currentView === "teacher-profiles" ? "teacher" : "student";
@@ -539,9 +550,9 @@ function renderAccountTable(users) {
     return `<div class="empty-state">No ${roleLabel} profiles have been registered yet.<br>Use the registration button above to add one.</div>`;
   }
   const teacherHint = users.length
-    ? `<p class="portal-subtitle account-assignment-hint">${users.every((account) => account.role === "student") ? "Select Assign to choose a class, teacher and subjects for a student. Select Edit to update their name, FEMIS ID or password." : "Select Edit to change a name, login ID or password. Double-click a name to edit class and subject assignments."}</p>`
+    ? `<p class="portal-subtitle account-assignment-hint">${users.every((account) => account.role === "student") ? "Select Assign to choose a class, teacher and subjects for a student. Sign-in IDs are fixed; users change their passwords themselves." : "Select Edit to change a name. Double-click a name to edit class and subject assignments."}</p>`
     : "";
-  return `${teacherHint}<div class="table-wrap"><table class="data-table"><thead><tr><th>Name</th><th>${users.some((account) => account.role === "teacher") ? "FEMIS ID / TPF number" : "FEMIS ID"}</th><th>Role</th><th>Class</th><th>Actions</th></tr></thead><tbody>${users.map((account) => `<tr><td class="table-name"><button class="teacher-assignment-trigger" type="button" data-action="${account.role === "teacher" ? "edit-teacher" : "edit-student"}" data-identifier="${escapeHTML(accountIdentifier(account))}" title="Double-click to edit class and subject assignments">${escapeHTML(account.name)}</button></td><td class="table-muted">${escapeHTML(accountIdentifier(account) || "Not set")}</td><td><span class="status-pill">${escapeHTML(account.role)}</span></td><td class="table-muted">${escapeHTML(getAccountClass(account)?.name || "Not assigned")}</td><td><div class="account-row-actions">${account.role === "student" ? `<button class="icon-button" type="button" data-action="assign-student" data-identifier="${escapeHTML(account.femisId)}">Assign</button>` : ""}<button class="icon-button" type="button" data-action="edit-account" data-account-role="${escapeHTML(account.role)}" data-identifier="${escapeHTML(accountIdentifier(account) || "")}">Edit</button><button class="icon-button" type="button" data-action="remove-account" data-account-role="${escapeHTML(account.role)}" data-identifier="${escapeHTML(accountIdentifier(account) || account.email || "")}" aria-label="Remove ${escapeHTML(account.name)}">Remove</button></div></td></tr>`).join("")}</tbody></table></div>`;
+  return `${teacherHint}<div class="table-wrap"><table class="data-table"><thead><tr><th>Name</th><th>${users.some((account) => account.role === "teacher") ? "FEMIS ID / TPF number" : "FEMIS ID"}</th><th>Role</th><th>Class</th><th>Actions</th></tr></thead><tbody>${users.map((account) => `<tr><td class="table-name">${account.disabled ? escapeHTML(account.name) : `<button class="teacher-assignment-trigger" type="button" data-action="${account.role === "teacher" ? "edit-teacher" : "edit-student"}" data-identifier="${escapeHTML(accountIdentifier(account))}" title="Double-click to edit class and subject assignments">${escapeHTML(account.name)}</button>`}</td><td class="table-muted">${escapeHTML(accountIdentifier(account) || "Not set")}</td><td><span class="status-pill">${escapeHTML(account.disabled ? `${account.role} · deactivated` : account.role)}</span></td><td class="table-muted">${escapeHTML(getAccountClass(account)?.name || "Not assigned")}</td><td><div class="account-row-actions">${account.disabled ? `<button class="icon-button" type="button" data-action="reactivate-account" data-identifier="${escapeHTML(accountIdentifier(account))}" data-account-role="${escapeHTML(account.role)}">Reactivate</button>` : `${account.role === "student" ? `<button class="icon-button" type="button" data-action="assign-student" data-identifier="${escapeHTML(account.femisId)}">Assign</button>` : ""}<button class="icon-button" type="button" data-action="edit-account" data-account-role="${escapeHTML(account.role)}" data-identifier="${escapeHTML(accountIdentifier(account) || "")}">Edit</button><button class="icon-button" type="button" data-action="remove-account" data-account-role="${escapeHTML(account.role)}" data-identifier="${escapeHTML(accountIdentifier(account) || account.email || "")}" aria-label="Deactivate ${escapeHTML(account.name)}">Deactivate</button>`}</div></td></tr>`).join("")}</tbody></table></div>`;
 }
 
 function renderAdminClasses() {
@@ -553,8 +564,8 @@ function renderAdminClasses() {
   );
   const classCards = classes.length
     ? `<div class="class-grid">${classes.map((classItem) => {
-      const studentCount = accounts.filter((account) => account.role === "student" && account.classId === classItem.id).length;
-      const teacher = accounts.find((account) => account.role === "teacher" && account.classId === classItem.id);
+      const studentCount = accounts.filter((account) => !account.disabled && account.role === "student" && account.classId === classItem.id).length;
+      const teacher = accounts.find((account) => !account.disabled && account.role === "teacher" && account.classId === classItem.id);
       return `<article class="class-card"><div class="class-card-heading"><div><span class="portal-eyebrow">CLASS</span><h3>${escapeHTML(classItem.name)}</h3></div><span class="course-tag">${studentCount} students</span></div><p class="class-teacher">${teacher ? `Teacher: ${escapeHTML(teacher.name)}` : "No teacher assigned yet"}</p><div class="panel-heading"><h4>Subjects</h4><span>${classItem.subjects.length}</span></div>${classItem.subjects.length ? `<ul class="subject-list">${classItem.subjects.map((subject) => `<li><div class="subject-list-copy"><strong>${escapeHTML(subject.name)}</strong><span>${escapeHTML(subject.description || "")}</span></div><div class="account-row-actions"><button class="icon-button" type="button" data-action="edit-subject" data-class-id="${escapeHTML(classItem.id)}" data-subject-id="${escapeHTML(subject.id)}">Edit</button><button class="icon-button" type="button" data-action="remove-subject" data-class-id="${escapeHTML(classItem.id)}" data-subject-id="${escapeHTML(subject.id)}" aria-label="Remove ${escapeHTML(subject.name)}">Remove</button></div></li>`).join("")}</ul>` : `<div class="empty-state compact-empty">No subjects created yet.</div>`}<div class="class-card-actions"><div class="account-row-actions"><button class="button button-light" type="button" data-action="new-subject" data-class-id="${escapeHTML(classItem.id)}">+ Add subject</button><button class="button button-light" type="button" data-action="edit-class" data-class-id="${escapeHTML(classItem.id)}">Edit class</button></div><button class="icon-button" type="button" data-action="remove-class" data-class-id="${escapeHTML(classItem.id)}" aria-label="Remove ${escapeHTML(classItem.name)}">Remove class</button></div></article>`;
     }).join("")}</div>`
     : `<div class="empty-state">No classes yet. Create a class first, then add subjects and register teachers or students into it.</div>`;
@@ -563,7 +574,7 @@ function renderAdminClasses() {
 
 function wirePortalActions() {
   $$("[data-action]", $("#portal-content")).forEach((button) => {
-    button.addEventListener("click", () => {
+    button.addEventListener("click", async () => {
       const { action } = button.dataset;
       if (action === "new-account") showAccountModal(button.dataset.role || "student");
       if (action === "manage-profiles") {
@@ -585,9 +596,10 @@ function wirePortalActions() {
       if (action === "edit-account") showAccountEditModal(button.dataset.accountRole, button.dataset.identifier);
       if (action === "edit-class") showClassModal(button.dataset.classId);
       if (action === "edit-subject") showSubjectModal(button.dataset.classId, button.dataset.subjectId);
-      if (action === "remove-account") removeAccount(button.dataset.accountRole, button.dataset.identifier);
-      if (action === "remove-class") removeClass(button.dataset.classId);
-      if (action === "remove-subject") removeSubject(button.dataset.classId, button.dataset.subjectId);
+      if (action === "remove-account") await removeAccount(button.dataset.accountRole, button.dataset.identifier);
+      if (action === "reactivate-account") await reactivateAccount(button.dataset.accountRole, button.dataset.identifier);
+      if (action === "remove-class") await removeClass(button.dataset.classId);
+      if (action === "remove-subject") await removeSubject(button.dataset.classId, button.dataset.subjectId);
       if (action === "edit-teacher") return;
       if (action === "edit-student") return;
     });
@@ -696,7 +708,7 @@ function showLiveClassModal() {
   });
   termSelect.addEventListener("change", () => updateWeekOptions(true, true));
   weekSelect.addEventListener("change", () => updateWeekOptions(true));
-  $("#live-class-form", backdrop).addEventListener("submit", (event) => {
+  $("#live-class-form", backdrop).addEventListener("submit", async (event) => {
     event.preventDefault();
     const formData = new FormData(event.currentTarget);
     const classId = String(formData.get("classId"));
@@ -740,10 +752,17 @@ function showLiveClassModal() {
       termYear: term.year,
       weekNumber,
       teacherId: currentUser.tpfNumber,
+      teacherUid: currentUser.uid,
       teacherName: currentUser.name,
       startsAt,
     });
-    saveStorage(STORAGE_KEYS.liveClasses, liveClasses);
+    try {
+      await saveStorage(STORAGE_KEYS.liveClasses, liveClasses);
+    } catch (error) {
+      liveClasses = liveClasses.filter((item) => item.id !== id);
+      $("#live-class-error", backdrop).textContent = error.message || "Could not save this live class.";
+      return;
+    }
     close();
     currentView = "live-classes";
     renderPortal();
@@ -773,7 +792,7 @@ function joinLiveClass(liveClassId) {
 }
 
 function showStudentAssignmentModal(femisId) {
-  const student = accounts.find((account) => account.role === "student"
+  const student = accounts.find((account) => !account.disabled && account.role === "student"
     && normalizedIdentifier(account.femisId) === normalizedIdentifier(femisId));
   if (!student) return;
   if (!classes.length) {
@@ -781,7 +800,7 @@ function showStudentAssignmentModal(femisId) {
     return;
   }
   const selectedClass = classes.find((item) => item.id === student.classId) || classes[0];
-  const assignedTeacher = accounts.find((account) => account.role === "teacher"
+  const assignedTeacher = accounts.find((account) => !account.disabled && account.role === "teacher"
     && account.classId === selectedClass.id
     && (student.teacherTpf === account.tpfNumber || (!student.teacherTpf && account.studentIds?.includes(student.femisId))));
   const { backdrop, close } = showModal(
@@ -804,7 +823,7 @@ function showStudentAssignmentModal(femisId) {
     : assignedTeacher ? teacherSubjects(assignedTeacher).map((subject) => subject.id) : [];
 
   const updateSubjects = (selectedIds) => {
-    const teacher = accounts.find((account) => account.role === "teacher" && account.tpfNumber === teacherSelect.value);
+    const teacher = accounts.find((account) => !account.disabled && account.role === "teacher" && account.tpfNumber === teacherSelect.value);
     const allowedSubjects = teacher ? teacherSubjects(teacher) : [];
     subjectSelect.innerHTML = allowedSubjects
       .map((subject) => `<option value="${escapeHTML(subject.id)}">${escapeHTML(subject.name)}</option>`).join("");
@@ -812,7 +831,7 @@ function showStudentAssignmentModal(femisId) {
   };
   const updateTeachers = (keepExisting) => {
     const currentTeacherTpf = keepExisting ? teacherSelect.value : student.teacherTpf || assignedTeacher?.tpfNumber || "";
-    const classTeachers = accounts.filter((account) => account.role === "teacher" && account.classId === classSelect.value);
+    const classTeachers = accounts.filter((account) => !account.disabled && account.role === "teacher" && account.classId === classSelect.value);
     teacherSelect.innerHTML = `<option value="">Choose a teacher</option>${classTeachers.map((teacher) => `<option value="${escapeHTML(teacher.tpfNumber)}">${escapeHTML(teacher.name)}</option>`).join("")}`;
     teacherSelect.value = classTeachers.some((teacher) => teacher.tpfNumber === currentTeacherTpf) ? currentTeacherTpf : "";
     const selectedIds = keepExisting
@@ -824,10 +843,10 @@ function showStudentAssignmentModal(femisId) {
   teacherSelect.addEventListener("change", () => updateSubjects([]));
   updateTeachers(false);
 
-  $("#student-assignment-form", backdrop).addEventListener("submit", (event) => {
+  $("#student-assignment-form", backdrop).addEventListener("submit", async (event) => {
     event.preventDefault();
     const classItem = classes.find((item) => item.id === classSelect.value);
-    const teacher = accounts.find((account) => account.role === "teacher" && account.tpfNumber === teacherSelect.value);
+    const teacher = accounts.find((account) => !account.disabled && account.role === "teacher" && account.tpfNumber === teacherSelect.value);
     const subjectIds = Array.from(subjectSelect.selectedOptions, (option) => option.value);
     const error = $("#student-assignment-error", backdrop);
     if (!classItem || !teacher || teacher.classId !== classItem.id) {
@@ -854,8 +873,13 @@ function showStudentAssignmentModal(femisId) {
     materials = materials.map((item) => item.teacherId === teacher.tpfNumber && item.classId === classItem.id
       ? { ...item, studentIds: [...new Set([...(item.studentIds || []), student.femisId])] }
       : item);
-    saveStorage(STORAGE_KEYS.accounts, accounts);
-    saveStorage(STORAGE_KEYS.materials, materials);
+    try {
+      await saveStorage(STORAGE_KEYS.accounts, accounts);
+      await saveStorage(STORAGE_KEYS.materials, materials);
+    } catch (saveError) {
+      error.textContent = saveError.message || "Could not save the assignments.";
+      return;
+    }
     close();
     renderPortal();
     showToast(`${student.name} was assigned to ${teacher.name} in ${classItem.name}.`);
@@ -922,7 +946,7 @@ function showTeacherAssignmentModal(tpfNumber) {
   };
   classSelect.addEventListener("change", () => updateAssignmentOptions(true));
   updateAssignmentOptions(false);
-  $("#teacher-assignment-form", backdrop).addEventListener("submit", (event) => {
+  $("#teacher-assignment-form", backdrop).addEventListener("submit", async (event) => {
     event.preventDefault();
     const classId = classSelect.value;
     const classItem = classes.find((item) => item.id === classId);
@@ -978,8 +1002,13 @@ function showTeacherAssignmentModal(tpfNumber) {
     materials.forEach((item) => {
       if (item.teacherId === teacher.tpfNumber) item.studentIds = [...studentIds];
     });
-    saveStorage(STORAGE_KEYS.accounts, accounts);
-    saveStorage(STORAGE_KEYS.materials, materials);
+    try {
+      await saveStorage(STORAGE_KEYS.accounts, accounts);
+      await saveStorage(STORAGE_KEYS.materials, materials);
+    } catch (saveError) {
+      $("#teacher-assignment-error", backdrop).textContent = saveError.message || "Could not save the assignments.";
+      return;
+    }
     close();
     renderPortal();
     showToast(`${teacher.name}’s class, subjects and students were updated.`);
@@ -997,7 +1026,7 @@ function showClassModal(classId = "") {
       <div class="admin-form-actions"><button class="button button-dark" type="submit">${editing ? "Save class" : "Create class"}</button><p class="form-message" id="class-error" aria-live="polite"></p></div>
     </form>
   `);
-  $("#class-form", backdrop).addEventListener("submit", (event) => {
+  $("#class-form", backdrop).addEventListener("submit", async (event) => {
     event.preventDefault();
     const name = String(new FormData(event.currentTarget).get("name")).trim();
     if (!name) return;
@@ -1007,7 +1036,12 @@ function showClassModal(classId = "") {
     }
     if (classItem) classItem.name = name;
     else classes.push({ id: `class-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, name, subjects: [] });
-    saveStorage(STORAGE_KEYS.classes, classes);
+    try {
+      await saveStorage(STORAGE_KEYS.classes, classes);
+    } catch (error) {
+      $("#class-error", backdrop).textContent = error.message || "Could not save this class.";
+      return;
+    }
     renderPrograms();
     close();
     renderPortal();
@@ -1034,7 +1068,7 @@ function showSubjectModal(selectedClassId = "", subjectId = "") {
       <div class="admin-form-actions"><button class="button button-dark" type="submit">${editing ? "Save subject" : "Create subject"}</button><p class="form-message" id="subject-error" aria-live="polite"></p></div>
     </form>
   `);
-  $("#subject-form", backdrop).addEventListener("submit", (event) => {
+  $("#subject-form", backdrop).addEventListener("submit", async (event) => {
     event.preventDefault();
     const formData = new FormData(event.currentTarget);
     const classItem = classes.find((item) => item.id === (subject ? selectedClass.id : formData.get("classId")));
@@ -1054,7 +1088,12 @@ function showSubjectModal(selectedClassId = "", subjectId = "") {
     } else {
       classItem.subjects.push({ id: `subject-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, name, description });
     }
-    saveStorage(STORAGE_KEYS.classes, classes);
+    try {
+      await saveStorage(STORAGE_KEYS.classes, classes);
+    } catch (error) {
+      $("#subject-error", backdrop).textContent = error.message || "Could not save this subject.";
+      return;
+    }
     renderPrograms();
     close();
     renderPortal();
@@ -1067,56 +1106,36 @@ function showAccountEditModal(role, identifier) {
   const account = accounts.find((item) => item.role === role
     && normalizedIdentifier(item[identifierProperty]) === normalizedIdentifier(identifier));
   if (!account) return;
-  const { backdrop, close } = showModal(`Edit ${role} account`, "Update the account name, sign-in ID or password. Use the account name in Accounts to change class assignments.", `
+  const { backdrop, close } = showModal(`Edit ${role} account`, "Update the account name. Sign-in IDs are fixed to the Firebase login; users can change their own passwords.", `
     <form class="admin-form" id="edit-account-form">
       <div class="form-grid">
         <div class="full-width"><label for="edit-account-name">${role === "student" ? "Student name" : "Teacher name"}</label><input id="edit-account-name" name="name" required maxlength="80" value="${escapeHTML(account.name)}"></div>
-        <div class="full-width"><label for="edit-account-identifier">${role === "student" ? "FEMIS ID" : "TPF number"}</label><input id="edit-account-identifier" name="identifier" required maxlength="40" value="${escapeHTML(account[identifierProperty])}"></div>
-        <div class="full-width"><label for="edit-account-password">New password (optional)</label><input id="edit-account-password" name="password" type="password" autocomplete="new-password" minlength="6" maxlength="100" placeholder="Leave blank to keep the current password"></div>
+        <div class="full-width"><label for="edit-account-identifier">${role === "student" ? "FEMIS ID" : "TPF number"}</label><input id="edit-account-identifier" value="${escapeHTML(account[identifierProperty])}" disabled></div>
       </div>
       <div class="admin-form-actions"><button class="button button-dark" type="submit">Save changes</button><p class="form-message" id="edit-account-error" aria-live="polite"></p></div>
     </form>
   `);
-  $("#edit-account-form", backdrop).addEventListener("submit", (event) => {
+  $("#edit-account-form", backdrop).addEventListener("submit", async (event) => {
     event.preventDefault();
     const formData = new FormData(event.currentTarget);
     const name = String(formData.get("name")).trim();
-    const nextIdentifier = normalizedIdentifier(formData.get("identifier"));
-    const password = String(formData.get("password"));
     const error = $("#edit-account-error", backdrop);
-    if (!name || !nextIdentifier || (password && password.length < 6)) {
-      error.textContent = "Enter a name and ID. A new password must be at least 6 characters.";
+    if (!name) {
+      error.textContent = "Enter a name.";
       return;
     }
-    if (accounts.some((item) => item !== account && item.role === role
-      && normalizedIdentifier(item[identifierProperty]) === nextIdentifier)) {
-      error.textContent = `That ${role === "student" ? "FEMIS ID" : "TPF number"} is already in use.`;
-      return;
-    }
-    const previousIdentifier = account[identifierProperty];
     account.name = name;
-    account[identifierProperty] = nextIdentifier;
-    if (password) account.password = password;
-    if (role === "student" && previousIdentifier !== nextIdentifier) {
-      accounts.filter((item) => item.role === "teacher").forEach((teacher) => {
-        teacher.studentIds = (teacher.studentIds || []).map((id) => id === previousIdentifier ? nextIdentifier : id);
-      });
-      materials.forEach((item) => {
-        if (Array.isArray(item.studentIds)) item.studentIds = item.studentIds.map((id) => id === previousIdentifier ? nextIdentifier : id);
-      });
-    }
     if (role === "teacher") {
-      if (previousIdentifier !== nextIdentifier) {
-        accounts.filter((item) => item.role === "student" && item.teacherTpf === previousIdentifier)
-          .forEach((student) => { student.teacherTpf = nextIdentifier; });
-        materials.filter((item) => item.teacherId === previousIdentifier)
-          .forEach((item) => { item.teacherId = nextIdentifier; });
-      }
-      materials.filter((item) => item.teacherId === nextIdentifier)
+      materials.filter((item) => item.teacherId === account.tpfNumber)
         .forEach((item) => { item.teacherName = name; });
     }
-    saveStorage(STORAGE_KEYS.accounts, accounts);
-    if (role === "teacher" || previousIdentifier !== nextIdentifier) saveStorage(STORAGE_KEYS.materials, materials);
+    try {
+      await saveStorage(STORAGE_KEYS.accounts, accounts);
+      if (role === "teacher") await saveStorage(STORAGE_KEYS.materials, materials);
+    } catch (saveError) {
+      error.textContent = saveError.message || "Could not save this account.";
+      return;
+    }
     close();
     renderPortal();
     showToast(`${name}’s account was updated.`);
@@ -1158,7 +1177,7 @@ function showAccountModal(initialRole = "student") {
     const role = roleSelect.value;
     const classItem = classes.find((item) => item.id === classSelect.value);
     const teacher = role === "student"
-      ? accounts.find((account) => account.role === "teacher" && account.tpfNumber === teacherSelect.value && account.classId === classSelect.value)
+      ? accounts.find((account) => !account.disabled && account.role === "teacher" && account.tpfNumber === teacherSelect.value && account.classId === classSelect.value)
       : null;
     const availableSubjects = role === "teacher"
       ? classItem?.subjects || []
@@ -1171,7 +1190,7 @@ function showAccountModal(initialRole = "student") {
       : `<span class="checklist-empty">${role === "teacher" ? "No subjects in this class yet. Add them in Classes & subjects." : "This teacher has no subjects assigned yet."}</span>`;
   };
   const updateTeachers = () => {
-    const classTeachers = accounts.filter((account) => account.role === "teacher" && account.classId === classSelect.value);
+    const classTeachers = accounts.filter((account) => !account.disabled && account.role === "teacher" && account.classId === classSelect.value);
     teacherSelect.innerHTML = `<option value="">Choose a teacher</option>${classTeachers.map((teacher) => `<option value="${escapeHTML(teacher.tpfNumber)}">${escapeHTML(teacher.name)}</option>`).join("")}`;
     teacherField.classList.toggle("hidden", roleSelect.value !== "student");
     updateSubjects();
@@ -1190,7 +1209,7 @@ function showAccountModal(initialRole = "student") {
   teacherSelect.addEventListener("change", updateSubjects);
   updateRoleFields();
 
-  $("#account-form", backdrop).addEventListener("submit", (event) => {
+  $("#account-form", backdrop).addEventListener("submit", async (event) => {
     event.preventDefault();
     const formData = new FormData(event.currentTarget);
     const name = String(formData.get("name")).trim();
@@ -1202,7 +1221,7 @@ function showAccountModal(initialRole = "student") {
     const subjectIds = $$('input[name="subjectIds"]:checked', backdrop).map((input) => input.value);
     const classItem = classes.find((item) => item.id === classId);
     const selectedTeacher = teacherTpf
-      ? accounts.find((account) => account.role === "teacher" && account.tpfNumber === teacherTpf && account.classId === classId)
+      ? accounts.find((account) => !account.disabled && account.role === "teacher" && account.tpfNumber === teacherTpf && account.classId === classId)
       : null;
     const identifierProperty = role === "student" ? "femisId" : "tpfNumber";
     const existing = accounts.some((account) => account.role === role
@@ -1218,16 +1237,30 @@ function showAccountModal(initialRole = "student") {
       error.textContent = "Choose a teacher and at least one of their subjects, or leave the teacher unassigned.";
       return;
     }
-    const account = {
+    let account = {
       name,
       [identifierProperty]: identifier,
-      password,
       role,
       classId,
       subjectIds: [...subjectIds],
       ...(role === "teacher" ? { studentIds: [] } : {}),
       ...(selectedTeacher ? { teacherTpf: selectedTeacher.tpfNumber } : {}),
     };
+    try {
+      account = await window.SachinelearnFirebase.registerAccount({
+        ...account,
+        password,
+        ...(role === "teacher" ? { studentIds: [] } : {}),
+      });
+    } catch (error) {
+      const authMessages = {
+        "auth/email-already-in-use": `This ${role === "student" ? "FEMIS ID" : "TPF number"} already has a Firebase login.`,
+        "auth/weak-password": "Choose a stronger password with at least 6 characters.",
+        "auth/network-request-failed": "Firebase could not be reached. Check the internet connection.",
+      };
+      $("#account-error", backdrop).textContent = authMessages[error.code] || error.message || "Could not register this account.";
+      return;
+    }
     accounts.push(account);
     if (selectedTeacher) selectedTeacher.studentIds = [...new Set([...(selectedTeacher.studentIds || []), identifier])];
     if (selectedTeacher) {
@@ -1235,8 +1268,13 @@ function showAccountModal(initialRole = "student") {
         ? { ...item, studentIds: [...new Set([...(item.studentIds || []), identifier])] }
         : item);
     }
-    saveStorage(STORAGE_KEYS.accounts, accounts);
-    if (selectedTeacher) saveStorage(STORAGE_KEYS.materials, materials);
+    try {
+      await saveStorage(STORAGE_KEYS.accounts, accounts);
+      if (selectedTeacher) await saveStorage(STORAGE_KEYS.materials, materials);
+    } catch (error) {
+      $("#account-error", backdrop).textContent = error.message || "The account was created but its academy profile could not be saved.";
+      return;
+    }
     close();
     renderPortal();
     showToast(`${role === "student" ? "Student" : "Teacher"} account created for ${name}.`);
@@ -1369,7 +1407,7 @@ function showMaterialModal() {
     try {
       if (needsFile) await storeAttachment(materialId, attachment);
       materials.unshift(material);
-      saveStorage(STORAGE_KEYS.materials, materials);
+      await saveStorage(STORAGE_KEYS.materials, materials);
     } catch (saveError) {
       materials = materials.filter((item) => item.id !== materialId);
       if (needsFile) await deleteAttachments([{ attachmentId: materialId }]);
@@ -1402,7 +1440,7 @@ function showTermDatesModal() {
       <div class="admin-form-actions"><button class="button button-dark" type="submit">Save term dates</button><p class="form-message" id="term-dates-error" aria-live="polite"></p></div>
     </form>
   `);
-  $("#term-dates-form", backdrop).addEventListener("submit", (event) => {
+  $("#term-dates-form", backdrop).addEventListener("submit", async (event) => {
     event.preventDefault();
     const formData = new FormData(event.currentTarget);
     const dates = [1, 2, 3].map((termNumber) => String(formData.get(`termStartDate${termNumber}`) || ""));
@@ -1427,7 +1465,12 @@ function showTermDatesModal() {
     }
     myClass.termStartDates = dates;
     delete myClass.termStartDate;
-    saveStorage(STORAGE_KEYS.classes, classes);
+    try {
+      await saveStorage(STORAGE_KEYS.classes, classes);
+    } catch (error) {
+      $("#term-dates-error", backdrop).textContent = error.message || "Could not save term dates.";
+      return;
+    }
     close();
     renderPortal();
     showToast(`Term dates for ${myClass.name} were updated.`);
@@ -1444,7 +1487,7 @@ function isSafeExternalUrl(value) {
 }
 
 function renderPasswordView() {
-  return `${portalHeading("ACCOUNT SETTINGS", "Change password", "Choose a new password for your account.")}<section class="portal-panel"><div class="panel-heading"><h3>Password security</h3><span>${escapeHTML(accountIdentifier(currentUser))}</span></div><p class="portal-subtitle">Enter your current password, then choose a new one.</p><button class="button button-dark" type="button" data-action="new-password">Update password</button></section>`;
+  return `${portalHeading("ACCOUNT SETTINGS", "Change password", "Choose a new password for your account.")}<section class="portal-panel"><div class="panel-heading"><h3>Password security</h3><span>${escapeHTML(accountIdentifier(currentUser) || currentUser.email || "")}</span></div><p class="portal-subtitle">Enter your current password, then choose a new one.</p><button class="button button-dark" type="button" data-action="new-password">Update password</button></section>`;
 }
 
 function showPasswordModal() {
@@ -1458,39 +1501,61 @@ function showPasswordModal() {
       <div class="admin-form-actions"><button class="button button-dark" type="submit">Save new password</button><p class="form-message" id="password-error" aria-live="polite"></p></div>
     </form>
   `);
-  $("#password-form", backdrop).addEventListener("submit", (event) => {
+  $("#password-form", backdrop).addEventListener("submit", async (event) => {
     event.preventDefault();
     const formData = new FormData(event.currentTarget);
     const currentPassword = String(formData.get("currentPassword"));
     const newPassword = String(formData.get("newPassword"));
     const confirmPassword = String(formData.get("confirmPassword"));
     const error = $("#password-error", backdrop);
-    if (currentPassword !== currentUser.password) { error.textContent = "Your current password is incorrect."; return; }
     if (newPassword.length < 6) { error.textContent = "Your new password must be at least 6 characters."; return; }
     if (newPassword !== confirmPassword) { error.textContent = "The new passwords do not match."; return; }
-    currentUser.password = newPassword;
-    accounts = accounts.map((account) => account.role === currentUser.role
-      && normalizedIdentifier(accountIdentifier(account)) === normalizedIdentifier(accountIdentifier(currentUser))
-      ? currentUser
-      : account);
-    saveStorage(STORAGE_KEYS.accounts, accounts);
+    try {
+      await window.SachinelearnFirebase.changePassword(currentPassword, newPassword);
+    } catch (passwordError) {
+      error.textContent = passwordError.code === "auth/wrong-password" || passwordError.code === "auth/invalid-credential"
+        ? "Your current password is incorrect."
+        : passwordError.message || "Could not update your password.";
+      return;
+    }
     close();
     showToast("Your password has been changed.");
   });
 }
 
-function removeAccount(role, identifier) {
+async function removeAccount(role, identifier) {
   const account = accounts.find((item) => item.role === role
     && normalizedIdentifier(accountIdentifier(item) || item.email) === normalizedIdentifier(identifier));
   if (!account) return;
-  if (!window.confirm(`Remove ${account.name}'s account? This cannot be undone.`)) return;
-  accounts = accounts.filter((item) => item !== account);
-  saveStorage(STORAGE_KEYS.accounts, accounts);
+  if (!window.confirm(`Deactivate ${account.name}'s sign-in? The Firebase login will be retained but blocked until you reactivate this profile.`)) return;
+  account.disabled = true;
+  try {
+    await saveStorage(STORAGE_KEYS.accounts, accounts);
+  } catch (error) {
+    showToast(error.message || "Could not deactivate this account.");
+    return;
+  }
   renderPortal();
-  showToast(`${account.name}'s account was removed.`);
+  showToast(`${account.name}'s profile was deactivated.`);
 }
 
-function removeClass(classId) {
+async function reactivateAccount(role, identifier) {
+  const account = accounts.find((item) => item.role === role
+    && normalizedIdentifier(accountIdentifier(item)) === normalizedIdentifier(identifier));
+  if (!account || !account.disabled) return;
+  account.disabled = false;
+  try {
+    await saveStorage(STORAGE_KEYS.accounts, accounts);
+  } catch (error) {
+    account.disabled = true;
+    showToast(error.message || "Could not reactivate this account.");
+    return;
+  }
+  renderPortal();
+  showToast(`${account.name}'s profile was reactivated.`);
+}
+
+async function removeClass(classId) {
   const classItem = classes.find((item) => item.id === classId);
   if (!classItem) return;
   const classAccounts = accounts.filter((account) => account.classId === classId);
@@ -1504,33 +1569,60 @@ function removeClass(classId) {
     materialCount ? `${materialCount} material${materialCount === 1 ? "" : "s"}` : "",
   ].filter(Boolean);
   const impact = details.length ? ` This also removes ${details.join(", ")}.` : "";
-  if (!window.confirm(`Remove the ${classItem.name} class?${impact} This cannot be undone.`)) return;
+  if (!window.confirm(`Remove the ${classItem.name} class?${impact} Accounts will be retained without a class assignment.`)) return;
   const removedMaterials = materials.filter((item) => item.classId === classId);
   classes = classes.filter((item) => item.id !== classId);
-  accounts = accounts.filter((account) => account.classId !== classId);
+  accounts.forEach((account) => {
+    if (account.classId === classId) {
+      account.classId = "";
+      account.subjectIds = [];
+      delete account.teacherTpf;
+      account.studentIds = [];
+    }
+  });
   materials = materials.filter((item) => item.classId !== classId);
-  deleteAttachments(removedMaterials);
-  saveStorage(STORAGE_KEYS.classes, classes);
-  saveStorage(STORAGE_KEYS.accounts, accounts);
-  saveStorage(STORAGE_KEYS.materials, materials);
+  liveClasses = liveClasses.filter((item) => item.classId !== classId);
+  try {
+    await saveStorage(STORAGE_KEYS.classes, classes);
+    await saveStorage(STORAGE_KEYS.accounts, accounts);
+    await saveStorage(STORAGE_KEYS.materials, materials);
+    await saveStorage(STORAGE_KEYS.liveClasses, liveClasses);
+  } catch (error) {
+    showToast(error.message || "Could not remove the class and its data.");
+    return;
+  }
+  await deleteAttachments(removedMaterials);
   renderPrograms();
   renderPortal();
   showToast(`${classItem.name} and its class data were removed.`);
 }
 
-function removeSubject(classId, subjectId) {
+async function removeSubject(classId, subjectId) {
   const classItem = classes.find((item) => item.id === classId);
   const subject = classItem?.subjects.find((item) => item.id === subjectId);
   if (!classItem || !subject) return;
   const materialCount = materials.filter((item) => item.classId === classId && item.subjectId === subjectId).length;
   const impact = materialCount ? ` This also removes ${materialCount} related material${materialCount === 1 ? "" : "s"}.` : "";
-  if (!window.confirm(`Remove ${subject.name} from ${classItem.name}?${impact} This cannot be undone.`)) return;
+  if (!window.confirm(`Remove ${subject.name} from ${classItem.name}?${impact} Student and teacher assignments to it will be removed.`)) return;
   const removedMaterials = materials.filter((item) => item.classId === classId && item.subjectId === subjectId);
   classItem.subjects = classItem.subjects.filter((item) => item.id !== subjectId);
+  accounts.forEach((account) => {
+    if (account.classId === classId) {
+      account.subjectIds = (account.subjectIds || []).filter((id) => id !== subjectId);
+    }
+  });
   materials = materials.filter((item) => item.classId !== classId || item.subjectId !== subjectId);
-  deleteAttachments(removedMaterials);
-  saveStorage(STORAGE_KEYS.classes, classes);
-  saveStorage(STORAGE_KEYS.materials, materials);
+  liveClasses = liveClasses.filter((item) => item.classId !== classId || item.subjectId !== subjectId);
+  try {
+    await saveStorage(STORAGE_KEYS.classes, classes);
+    await saveStorage(STORAGE_KEYS.accounts, accounts);
+    await saveStorage(STORAGE_KEYS.materials, materials);
+    await saveStorage(STORAGE_KEYS.liveClasses, liveClasses);
+  } catch (error) {
+    showToast(error.message || "Could not remove this subject.");
+    return;
+  }
+  await deleteAttachments(removedMaterials);
   renderPrograms();
   renderPortal();
   showToast(`${subject.name} was removed from ${classItem.name}.`);
@@ -1542,3 +1634,11 @@ $("#signout-button").addEventListener("click", signOut);
 setActiveRole("student");
 $("#current-year").textContent = new Date().getFullYear();
 renderPrograms();
+window.SachinelearnFirebase.loadPublicClasses()
+  .then((publicClasses) => {
+    classes = publicClasses;
+    renderPrograms();
+  })
+  .catch((error) => {
+    showToast(error.message || "Could not load academy subjects from Firebase.");
+  });
