@@ -31,6 +31,13 @@
     return profile;
   }
 
+  function assignedClassIds(account) {
+    if (account.role === "teacher" && Array.isArray(account.classAssignments)) {
+      return [...new Set(account.classAssignments.map((assignment) => assignment.classId).filter(Boolean))];
+    }
+    return account.classId ? [account.classId] : [];
+  }
+
   async function writeRecords(key, items) {
     const collectionName = collections[key];
     if (!collectionName) throw new Error(`Unknown Firebase collection for ${key}.`);
@@ -43,36 +50,34 @@
         if (!account.uid) throw new Error(`The ${account.name} account is missing its Firebase user ID.`);
         const profile = accountProfile(account);
         batch.set(db.collection("users").doc(account.uid), profile);
-        if (account.classId && !account.disabled) {
-          batch.set(db.collection("classes").doc(account.classId).collection("members").doc(account.uid), {
+        const classIds = assignedClassIds(account);
+        const previousClassIds = assignedClassIds(knownProfiles.get(account.uid) || account);
+        classIds.forEach((classId) => {
+          if (account.disabled) return;
+          const assignment = account.role === "teacher" && Array.isArray(account.classAssignments)
+            ? account.classAssignments.find((item) => item.classId === classId)
+            : null;
+          batch.set(db.collection("classes").doc(classId).collection("members").doc(account.uid), {
             role: account.role,
-            classId: account.classId,
-            subjectIds: Array.isArray(account.subjectIds) ? account.subjectIds : [],
+            classId,
+            subjectIds: Array.isArray(assignment?.subjectIds)
+              ? assignment.subjectIds
+              : Array.isArray(account.subjectIds) ? account.subjectIds : [],
             name: account.name,
             identifier: account.role === "student" ? account.femisId : account.tpfNumber,
           });
-        } else {
-          const priorClassId = knownProfiles.get(account.uid)?.classId || account.classId;
-          if (priorClassId) {
-            batch.delete(db.collection("classes").doc(priorClassId).collection("members").doc(account.uid));
-          }
-        }
+        });
+        previousClassIds.filter((classId) => !classIds.includes(classId) || account.disabled)
+          .forEach((classId) => batch.delete(db.collection("classes").doc(classId).collection("members").doc(account.uid)));
       });
       oldIds.forEach((uid) => {
         if (!nextIds.has(uid)) {
           batch.delete(db.collection("users").doc(uid));
-          const priorClassId = knownProfiles.get(uid)?.classId;
-          if (priorClassId) {
-            batch.delete(db.collection("classes").doc(priorClassId).collection("members").doc(uid));
-          }
+          assignedClassIds(knownProfiles.get(uid) || {}).forEach((classId) => {
+            batch.delete(db.collection("classes").doc(classId).collection("members").doc(uid));
+          });
         }
       });
-      for (const account of items) {
-        const priorClassId = knownProfiles.get(account.uid)?.classId;
-        if (priorClassId && priorClassId !== account.classId) {
-          batch.delete(db.collection("classes").doc(priorClassId).collection("members").doc(account.uid));
-        }
-      }
     } else {
       items.forEach((item) => {
         const id = key === "classes" ? item.id : item.id;
@@ -141,37 +146,43 @@
     if (role === "admin") {
       accounts = await readCollection("accounts", db.collection("users"));
     } else if (role === "teacher") {
-      accounts = profile.classId
-        ? await readCollection(
-          "accounts",
-          db.collection("users").where("classId", "==", profile.classId).where("role", "==", "student"),
-        )
-        : [];
+      const teacherClassIds = assignedClassIds(profile);
+      const classAccounts = await Promise.all(teacherClassIds.map((classId) => readCollection(
+        "accounts",
+        db.collection("users").where("classId", "==", classId).where("role", "==", "student"),
+      )));
+      accounts = [...new Map(classAccounts.flat().map((account) => [account.uid, account])).values()];
       if (!accounts.some((account) => account.uid === profile.uid)) accounts.push(profile);
     } else {
       accounts = [profile];
     }
-    const materialQuery = role === "admin"
-      ? db.collection("materials")
-      : role === "teacher" && profile.classId
-        ? db.collection("materials").where("classId", "==", profile.classId).where("teacherUid", "==", credential.user.uid)
+    const teacherClassIds = role === "teacher" ? assignedClassIds(profile) : [];
+    const materialQueries = role === "admin"
+      ? [db.collection("materials")]
+      : role === "teacher"
+        ? teacherClassIds.map((classId) => db.collection("materials").where("classId", "==", classId).where("teacherUid", "==", credential.user.uid))
         : role === "student" && profile.classId && profile.subjectIds?.length
-          ? db.collection("materials").where("classId", "==", profile.classId)
+          ? [db.collection("materials").where("classId", "==", profile.classId)
             .where("subjectId", "in", profile.subjectIds.slice(0, 30))
-            .where("availableAt", "<=", firebase.firestore.Timestamp.fromMillis(Date.now()))
-          : null;
-    const liveClassQuery = role === "admin"
-      ? db.collection("liveClasses")
-      : role === "teacher" && profile.classId
-        ? db.collection("liveClasses").where("classId", "==", profile.classId).where("teacherUid", "==", credential.user.uid)
+            .where("availableAt", "<=", firebase.firestore.Timestamp.fromMillis(Date.now()))]
+          : [];
+    const liveClassQueries = role === "admin"
+      ? [db.collection("liveClasses")]
+      : role === "teacher"
+        ? teacherClassIds.map((classId) => db.collection("liveClasses").where("classId", "==", classId).where("teacherUid", "==", credential.user.uid))
         : role === "student" && profile.classId && profile.subjectIds?.length
-          ? db.collection("liveClasses").where("classId", "==", profile.classId)
-            .where("subjectId", "in", profile.subjectIds.slice(0, 30))
-          : null;
-    const [materials, liveClasses] = await Promise.all([
-      materialQuery ? readCollection("materials", materialQuery) : [],
-      liveClassQuery ? readCollection("liveClasses", liveClassQuery) : [],
+          ? [db.collection("liveClasses").where("classId", "==", profile.classId)
+            .where("subjectId", "in", profile.subjectIds.slice(0, 30))]
+          : [];
+    const [materialResults, liveClassResults] = await Promise.all([
+      Promise.all(materialQueries.map((query) => readCollection("materials", query))),
+      Promise.all(liveClassQueries.map((query) => readCollection("liveClasses", query))),
     ]);
+    const materials = [...new Map(materialResults.flat().map((item) => [item.id, item])).values()];
+    const liveClasses = [...new Map(liveClassResults.flat().map((item) => [item.id, item])).values()];
+    knownIds.set("materials", new Set(materials.map((item) => item.id)));
+    knownIds.set("liveClasses", new Set(liveClasses.map((item) => item.id)));
+    if (role === "teacher") knownIds.set("accounts", new Set(accounts.map((account) => account.uid)));
     return { user: profile, accounts, classes, materials, liveClasses };
   }
 

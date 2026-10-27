@@ -281,7 +281,30 @@ function statCard(label, value, caption) {
 }
 
 function getAccountClass(account) {
-  return classes.find((item) => item.id === account.classId);
+  const classIds = accountClassIds(account);
+  return classes.find((item) => item.id === (account.classId || classIds[0]));
+}
+
+function accountClassLabel(account) {
+  const assignedClasses = accountClassIds(account)
+    .map((classId) => classes.find((item) => item.id === classId)?.name)
+    .filter(Boolean);
+  return assignedClasses.length ? assignedClasses.join(", ") : "Not assigned";
+}
+
+function accountClassIds(account) {
+  if (account.role === "teacher" && Array.isArray(account.classAssignments)) {
+    return [...new Set(account.classAssignments.map((assignment) => assignment.classId).filter(Boolean))];
+  }
+  return account.classId ? [account.classId] : [];
+}
+
+function teacherAssignment(teacher, classId) {
+  const assignment = Array.isArray(teacher.classAssignments)
+    ? teacher.classAssignments.find((item) => item.classId === classId)
+    : null;
+  if (assignment) return assignment;
+  return teacher.classId === classId ? { classId, subjectIds: teacher.subjectIds || [] } : null;
 }
 
 function classSubjects(classId) {
@@ -289,8 +312,9 @@ function classSubjects(classId) {
 }
 
 function currentClassMaterials() {
-  if (!currentUser.classId) return [];
-  return materials.filter((item) => item.classId === currentUser.classId
+  const classIds = currentUser.role === "teacher" ? accountClassIds(currentUser) : [currentUser.classId];
+  if (!classIds.length) return [];
+  return materials.filter((item) => classIds.includes(item.classId)
     && (currentUser.role !== "student" || !Number.isFinite(item.availableAt) || item.availableAt <= Date.now())
     && (currentUser.role !== "student" || (Array.isArray(currentUser.subjectIds)
       && currentUser.subjectIds.includes(item.subjectId)
@@ -300,14 +324,19 @@ function currentClassMaterials() {
 }
 
 function teacherSubjects(teacher) {
-  const subjects = classSubjects(teacher.classId);
-  if (!Array.isArray(teacher.subjectIds)) return subjects;
-  return subjects.filter((subject) => teacher.subjectIds.includes(subject.id));
+  return accountClassIds(teacher).flatMap((classId) => teacherSubjectsForClass(teacher, classId));
+}
+
+function teacherSubjectsForClass(teacher, classId) {
+  const subjects = classSubjects(classId);
+  const assignment = teacherAssignment(teacher, classId);
+  return assignment ? subjects.filter((subject) => assignment.subjectIds.includes(subject.id)) : [];
 }
 
 function teacherStudents(teacher) {
+  const classIds = accountClassIds(teacher);
   const students = accounts.filter((account) => !account.disabled && account.role === "student"
-    && account.classId === teacher.classId
+    && classIds.includes(account.classId)
     && (account.teacherTpf === teacher.tpfNumber
       || (!account.teacherTpf && Array.isArray(teacher.studentIds) && teacher.studentIds.includes(account.femisId))));
   return students;
@@ -449,12 +478,14 @@ function renderMaterials(items, emptyMessage) {
 function renderLiveClassesView() {
   const myClass = getAccountClass(currentUser);
   const teacher = currentUser.role === "teacher";
+  const classIds = teacher ? accountClassIds(currentUser) : [currentUser.classId];
   const assignedSubjects = teacher ? teacherSubjects(currentUser) : myClass?.subjects
     .filter((subject) => (currentUser.subjectIds || []).includes(subject.id)) || [];
-  const subjectIds = assignedSubjects.map((subject) => subject.id);
   const sessions = liveClasses
-    .filter((session) => session.classId === currentUser.classId
-      && subjectIds.includes(session.subjectId)
+    .filter((session) => classIds.includes(session.classId)
+      && (teacher
+        ? teacherSubjectsForClass(currentUser, session.classId).some((subject) => subject.id === session.subjectId)
+        : assignedSubjects.some((subject) => subject.id === session.subjectId))
       && (!teacher || session.teacherId === currentUser.tpfNumber))
     .sort((a, b) => a.startsAt - b.startsAt);
   const action = teacher && assignedSubjects.length
@@ -468,11 +499,14 @@ function renderLiveClassesView() {
   );
   const cards = sessions.length
     ? `<div class="live-class-list">${sessions.map((session) => {
-      const subject = assignedSubjects.find((item) => item.id === session.subjectId);
-      return `<article class="live-class-card"><div class="live-class-details"><span class="course-tag">${escapeHTML(subject?.name || "Subject")}</span><h3>${escapeHTML(session.title)}</h3><p>${escapeHTML(session.description || "Join your teacher for this live class.")}</p><small>${escapeHTML(myClass?.name || "Class")} · ${escapeHTML(session.termName || `Term ${session.termNumber || "—"}`)}, Week ${escapeHTML(session.weekNumber || "—")} · ${escapeHTML(new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(session.startsAt))} · ${escapeHTML(session.teacherName)}</small></div><button class="button button-dark" type="button" data-action="join-live-class" data-live-class-id="${escapeHTML(session.id)}">Join class ↗</button></article>`;
+      const subject = teacher
+        ? teacherSubjectsForClass(currentUser, session.classId).find((item) => item.id === session.subjectId)
+        : assignedSubjects.find((item) => item.id === session.subjectId);
+      const sessionClass = classes.find((item) => item.id === session.classId);
+      return `<article class="live-class-card"><div class="live-class-details"><span class="course-tag">${escapeHTML(subject?.name || "Subject")}</span><h3>${escapeHTML(session.title)}</h3><p>${escapeHTML(session.description || "Join your teacher for this live class.")}</p><small>${escapeHTML(sessionClass?.name || "Class")} · ${escapeHTML(session.termName || `Term ${session.termNumber || "—"}`)}, Week ${escapeHTML(session.weekNumber || "—")} · ${escapeHTML(new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(session.startsAt))} · ${escapeHTML(session.teacherName)}</small></div><button class="button button-dark" type="button" data-action="join-live-class" data-live-class-id="${escapeHTML(session.id)}">Join class ↗</button></article>`;
     }).join("")}</div>`
     : `<div class="empty-state">${teacher ? "You have not scheduled any live classes yet." : "Your teacher has not scheduled a live class for your subjects yet."}</div>`;
-  return `${heading}<section class="portal-panel"><div class="panel-heading"><h3>${myClass ? `${escapeHTML(myClass.name)} online classes` : "Online classes"}</h3><span>${sessions.length} scheduled</span></div>${cards}<p class="live-class-notice">Video calls use the external Jitsi Meet service. Anyone with a room link may be able to join. Class schedules are shared through Firebase.</p></section>`;
+  return `${heading}<section class="portal-panel"><div class="panel-heading"><h3>${teacher && classIds.length > 1 ? "Your online classes" : myClass ? `${escapeHTML(myClass.name)} online classes` : "Online classes"}</h3><span>${sessions.length} scheduled</span></div>${cards}<p class="live-class-notice">Video calls use the external Jitsi Meet service. Anyone with a room link may be able to join. Class schedules are shared through Firebase.</p></section>`;
 }
 
 function renderStudentView() {
@@ -500,16 +534,19 @@ function renderTeacherView() {
     return `${portalHeading("TEACHING SPACE", "Teaching materials", "Post lessons and activities, or upload textbooks and past year exam papers for each assigned subject.", action)}<section class="portal-panel"><div class="panel-heading"><h3>Your class posts</h3><span>${currentClassMaterials().length} posts</span></div>${renderMaterials(currentClassMaterials(), "No materials yet. Once the administrator creates subjects for your class, you can share resources here.")}</section>`;
   }
   const myClass = getAccountClass(currentUser);
+  const assignedClasses = classes.filter((classItem) => accountClassIds(currentUser).includes(classItem.id));
   const classStudents = teacherStudents(currentUser);
   const assignedSubjects = teacherSubjects(currentUser);
   const subjectCount = assignedSubjects.length;
   const classMaterials = currentClassMaterials();
-  if (myClass) {
-    const assignedStudentList = classStudents.length
-      ? classStudents.map((student) => `<span class="assigned-student">${escapeHTML(student.name)}</span>`).join("")
-      : `<p class="portal-subtitle">No students assigned yet. Ask your administrator to update your assignment.</p>`;
+  if (assignedClasses.length) {
     const teacherActions = `<div class="account-row-actions"><button class="button button-light" type="button" data-action="set-term-dates">Set term dates</button>${subjectCount && classStudents.length ? `<button class="button button-dark" type="button" data-action="new-material">+ Post material</button>` : ""}</div>`;
-    return `${portalHeading("TEACHING SPACE", `Welcome, ${escapeHTML(currentUser.name.split(" ")[0])}.`, `Your class: ${escapeHTML(myClass.name)}. Share learning materials with your assigned students.`, teacherActions)}<div class="stat-grid">${statCard("MY CLASS", escapeHTML(myClass.name), "Assigned by your administrator")}${statCard("SUBJECTS", subjectCount, "Assigned by your administrator")}${statCard("MY STUDENTS", classStudents.length, "Assigned by your administrator")}</div><section class="portal-panel"><div class="panel-heading"><h3>${escapeHTML(myClass.name)} subjects</h3><span>${classStudents.length} students</span></div>${subjectCount ? `<div class="subject-grid">${assignedSubjects.map((subject) => `<article class="subject-card"><span class="program-icon" aria-hidden="true">✳</span><h4>${escapeHTML(subject.name)}</h4><p>${escapeHTML(subject.description || "Share resources and activities for this subject.")}</p></article>`).join("")}</div>` : `<div class="empty-state">Ask your administrator to assign subjects. Teachers cannot create subjects.</div>`}<div class="assigned-student-list"><h4>Students assigned to you</h4>${assignedStudentList}</div></section><section class="portal-panel"><div class="panel-heading"><h3>Recent class materials</h3><span>${classMaterials.length} posts</span></div>${renderMaterials(classMaterials.slice(0, 4), "Your class materials will appear here after you post them.")}</section>`;
+    const classSections = assignedClasses.map((classItem) => {
+      const subjects = teacherSubjectsForClass(currentUser, classItem.id);
+      const students = classStudents.filter((student) => student.classId === classItem.id);
+      return `<section class="portal-panel"><div class="panel-heading"><h3>${escapeHTML(classItem.name)}</h3><span>${students.length} students</span></div>${subjects.length ? `<div class="subject-grid">${subjects.map((subject) => `<article class="subject-card"><span class="program-icon" aria-hidden="true">✳</span><h4>${escapeHTML(subject.name)}</h4><p>${escapeHTML(subject.description || "Share resources and activities for this subject.")}</p></article>`).join("")}</div>` : `<div class="empty-state">Ask your administrator to assign subjects for this class.</div>`}<div class="assigned-student-list"><h4>Students assigned to you</h4>${students.length ? students.map((student) => `<span class="assigned-student">${escapeHTML(student.name)}</span>`).join("") : `<p class="portal-subtitle">No students assigned yet.</p>`}</div></section>`;
+    }).join("");
+    return `${portalHeading("TEACHING SPACE", `Welcome, ${escapeHTML(currentUser.name.split(" ")[0])}.`, `You teach ${assignedClasses.length} ${assignedClasses.length === 1 ? "class" : "classes"}. Share learning materials with your assigned students.`, teacherActions)}<div class="stat-grid">${statCard("MY CLASSES", assignedClasses.length, "Assigned by your administrator")}${statCard("SUBJECTS", subjectCount, "Across all assigned classes")}${statCard("MY STUDENTS", classStudents.length, "Across all assigned classes")}</div>${classSections}<section class="portal-panel"><div class="panel-heading"><h3>Recent class materials</h3><span>${classMaterials.length} posts</span></div>${renderMaterials(classMaterials.slice(0, 4), "Your class materials will appear here after you post them.")}</section>`;
   }
   return `${portalHeading("TEACHING SPACE", `Welcome, ${escapeHTML(currentUser.name.split(" ")[0])}.`, myClass ? `Your class: ${escapeHTML(myClass.name)}. Share learning materials with your students.` : "You have not been assigned to a class yet.", subjectCount ? `<button class="button button-dark" type="button" data-action="new-material">+ Post material</button>` : "")}<div class="stat-grid">${statCard("MY CLASS", myClass ? escapeHTML(myClass.name) : "—", "Assigned by your administrator")}${statCard("SUBJECTS", subjectCount, "Created by your administrator")}${statCard("CLASS MATERIALS", classMaterials.length, "Shared with your students")}</div><section class="portal-panel"><div class="panel-heading"><h3>${myClass ? `${escapeHTML(myClass.name)} subjects` : "Class assignment"}</h3><span>${classStudents.length} students</span></div>${myClass && subjectCount ? `<div class="subject-grid">${myClass.subjects.map((subject) => `<article class="subject-card"><span class="program-icon" aria-hidden="true">✳</span><h4>${escapeHTML(subject.name)}</h4><p>${escapeHTML(subject.description || "Share resources and activities for this subject.")}</p></article>`).join("")}</div>` : `<div class="empty-state">Ask your administrator to assign you to a class and create subjects. Teachers cannot create classes or subjects.</div>`}</section><section class="portal-panel"><div class="panel-heading"><h3>Recent class materials</h3><span>${classMaterials.length} posts</span></div>${renderMaterials(classMaterials.slice(0, 4), "Your class materials will appear here after you post them.")}</section>`;
 }
@@ -552,7 +589,7 @@ function renderAccountTable(users) {
   const teacherHint = users.length
     ? `<p class="portal-subtitle account-assignment-hint">${users.every((account) => account.role === "student") ? "Select Assign to choose a class, teacher and subjects for a student. Sign-in IDs are fixed; users change their passwords themselves." : "Select Assign to choose a teacher’s class, subjects and students. Use Deactivate or Reactivate to control teacher access."}</p>`
     : "";
-  return `${teacherHint}<div class="table-wrap"><table class="data-table"><thead><tr><th>Name</th><th>${users.some((account) => account.role === "teacher") ? "FEMIS ID / TPF number" : "FEMIS ID"}</th><th>Role</th><th>Class</th><th>Actions</th></tr></thead><tbody>${users.map((account) => `<tr><td class="table-name">${escapeHTML(account.name)}</td><td class="table-muted">${escapeHTML(accountIdentifier(account) || "Not set")}</td><td><span class="status-pill">${escapeHTML(account.disabled ? `${account.role} · deactivated` : account.role)}</span></td><td class="table-muted">${escapeHTML(getAccountClass(account)?.name || "Not assigned")}</td><td><div class="account-row-actions">${account.disabled ? `<button class="icon-button" type="button" data-action="reactivate-account" data-identifier="${escapeHTML(accountIdentifier(account))}" data-account-role="${escapeHTML(account.role)}">Reactivate</button>` : `${account.role === "teacher" ? `<button class="icon-button" type="button" data-action="assign-teacher" data-identifier="${escapeHTML(account.tpfNumber)}">Assign</button>` : `<button class="icon-button" type="button" data-action="assign-student" data-identifier="${escapeHTML(account.femisId)}">Assign</button>`}<button class="icon-button" type="button" data-action="edit-account" data-account-role="${escapeHTML(account.role)}" data-identifier="${escapeHTML(accountIdentifier(account) || "")}">Edit</button><button class="icon-button" type="button" data-action="remove-account" data-account-role="${escapeHTML(account.role)}" data-identifier="${escapeHTML(accountIdentifier(account) || account.email || "")}" aria-label="Deactivate ${escapeHTML(account.name)}">Deactivate</button>`}</div></td></tr>`).join("")}</tbody></table></div>`;
+  return `${teacherHint}<div class="table-wrap"><table class="data-table"><thead><tr><th>Name</th><th>${users.some((account) => account.role === "teacher") ? "FEMIS ID / TPF number" : "FEMIS ID"}</th><th>Role</th><th>Class</th><th>Actions</th></tr></thead><tbody>${users.map((account) => `<tr><td class="table-name">${escapeHTML(account.name)}</td><td class="table-muted">${escapeHTML(accountIdentifier(account) || "Not set")}</td><td><span class="status-pill">${escapeHTML(account.disabled ? `${account.role} · deactivated` : account.role)}</span></td><td class="table-muted">${escapeHTML(accountClassLabel(account))}</td><td><div class="account-row-actions">${account.disabled ? `<button class="icon-button" type="button" data-action="reactivate-account" data-identifier="${escapeHTML(accountIdentifier(account))}" data-account-role="${escapeHTML(account.role)}">Reactivate</button>` : `${account.role === "teacher" ? `<button class="icon-button" type="button" data-action="assign-teacher" data-identifier="${escapeHTML(account.tpfNumber)}">Assign</button>` : `<button class="icon-button" type="button" data-action="assign-student" data-identifier="${escapeHTML(account.femisId)}">Assign</button>`}<button class="icon-button" type="button" data-action="edit-account" data-account-role="${escapeHTML(account.role)}" data-identifier="${escapeHTML(accountIdentifier(account) || "")}">Edit</button><button class="icon-button" type="button" data-action="remove-account" data-account-role="${escapeHTML(account.role)}" data-identifier="${escapeHTML(accountIdentifier(account) || account.email || "")}" aria-label="Deactivate ${escapeHTML(account.name)}">Deactivate</button>`}</div></td></tr>`).join("")}</tbody></table></div>`;
 }
 
 function renderAdminClasses() {
@@ -565,8 +602,8 @@ function renderAdminClasses() {
   const classCards = classes.length
     ? `<div class="class-grid">${classes.map((classItem) => {
       const studentCount = accounts.filter((account) => !account.disabled && account.role === "student" && account.classId === classItem.id).length;
-      const teacher = accounts.find((account) => !account.disabled && account.role === "teacher" && account.classId === classItem.id);
-      return `<article class="class-card"><div class="class-card-heading"><div><span class="portal-eyebrow">CLASS</span><h3>${escapeHTML(classItem.name)}</h3></div><span class="course-tag">${studentCount} students</span></div><p class="class-teacher">${teacher ? `Teacher: ${escapeHTML(teacher.name)}` : "No teacher assigned yet"}</p><div class="panel-heading"><h4>Subjects</h4><span>${classItem.subjects.length}</span></div>${classItem.subjects.length ? `<ul class="subject-list">${classItem.subjects.map((subject) => `<li><div class="subject-list-copy"><strong>${escapeHTML(subject.name)}</strong><span>${escapeHTML(subject.description || "")}</span></div><div class="account-row-actions"><button class="icon-button" type="button" data-action="edit-subject" data-class-id="${escapeHTML(classItem.id)}" data-subject-id="${escapeHTML(subject.id)}">Edit</button><button class="icon-button" type="button" data-action="remove-subject" data-class-id="${escapeHTML(classItem.id)}" data-subject-id="${escapeHTML(subject.id)}" aria-label="Remove ${escapeHTML(subject.name)}">Remove</button></div></li>`).join("")}</ul>` : `<div class="empty-state compact-empty">No subjects created yet.</div>`}<div class="class-card-actions"><div class="account-row-actions"><button class="button button-light" type="button" data-action="new-subject" data-class-id="${escapeHTML(classItem.id)}">+ Add subject</button><button class="button button-light" type="button" data-action="edit-class" data-class-id="${escapeHTML(classItem.id)}">Edit class</button></div><button class="icon-button" type="button" data-action="remove-class" data-class-id="${escapeHTML(classItem.id)}" aria-label="Remove ${escapeHTML(classItem.name)}">Remove class</button></div></article>`;
+      const classTeachers = accounts.filter((account) => !account.disabled && account.role === "teacher" && teacherAssignment(account, classItem.id));
+      return `<article class="class-card"><div class="class-card-heading"><div><span class="portal-eyebrow">CLASS</span><h3>${escapeHTML(classItem.name)}</h3></div><span class="course-tag">${studentCount} students</span></div><p class="class-teacher">${classTeachers.length ? `Teacher${classTeachers.length === 1 ? "" : "s"}: ${classTeachers.map((teacher) => escapeHTML(teacher.name)).join(", ")}` : "No teacher assigned yet"}</p><div class="panel-heading"><h4>Subjects</h4><span>${classItem.subjects.length}</span></div>${classItem.subjects.length ? `<ul class="subject-list">${classItem.subjects.map((subject) => `<li><div class="subject-list-copy"><strong>${escapeHTML(subject.name)}</strong><span>${escapeHTML(subject.description || "")}</span></div><div class="account-row-actions"><button class="icon-button" type="button" data-action="edit-subject" data-class-id="${escapeHTML(classItem.id)}" data-subject-id="${escapeHTML(subject.id)}">Edit</button><button class="icon-button" type="button" data-action="remove-subject" data-class-id="${escapeHTML(classItem.id)}" data-subject-id="${escapeHTML(subject.id)}" aria-label="Remove ${escapeHTML(subject.name)}">Remove</button></div></li>`).join("")}</ul>` : `<div class="empty-state compact-empty">No subjects created yet.</div>`}<div class="class-card-actions"><div class="account-row-actions"><button class="button button-light" type="button" data-action="new-subject" data-class-id="${escapeHTML(classItem.id)}">+ Add subject</button><button class="button button-light" type="button" data-action="edit-class" data-class-id="${escapeHTML(classItem.id)}">Edit class</button></div><button class="icon-button" type="button" data-action="remove-class" data-class-id="${escapeHTML(classItem.id)}" aria-label="Remove ${escapeHTML(classItem.name)}">Remove class</button></div></article>`;
     }).join("")}</div>`
     : `<div class="empty-state">No classes yet. Create a class first, then add subjects and register teachers or students into it.</div>`;
   return `${heading}<section class="portal-panel"><div class="panel-heading"><h3>Academy classes</h3><span>${classes.length} classes</span><button class="button button-light" type="button" data-action="new-subject" ${classes.length ? "" : "disabled"}>+ Create subject</button></div>${classCards}</section>`;
@@ -619,7 +656,8 @@ function showModal(title, description, body) {
 }
 
 function showLiveClassModal() {
-  const assignedClasses = classes.filter((classItem) => classItem.id === currentUser.classId);
+  const assignedClassIds = accountClassIds(currentUser);
+  const assignedClasses = classes.filter((classItem) => assignedClassIds.includes(classItem.id));
   if (!assignedClasses.length) {
     showToast("Ask your administrator to assign your class and subjects first.");
     return;
@@ -649,9 +687,7 @@ function showLiveClassModal() {
   const weekDates = $("#live-class-week-dates", backdrop);
   const assignedSubjectsForClass = (classItem) => {
     const subjects = classItem?.subjects || [];
-    return classItem?.id === currentUser.classId && Array.isArray(currentUser.subjectIds)
-      ? subjects.filter((subject) => currentUser.subjectIds.includes(subject.id))
-      : subjects;
+    return teacherSubjectsForClass(currentUser, classItem?.id);
   };
   const updateSubjects = () => {
     const classItem = assignedClasses.find((item) => item.id === classSelect.value);
@@ -755,9 +791,10 @@ function showLiveClassModal() {
 
 function joinLiveClass(liveClassId) {
   const session = liveClasses.find((item) => item.id === liveClassId
-    && (item.classId === currentUser.classId || (currentUser.classIds || []).includes(item.classId))
+    && accountClassIds(currentUser).includes(item.classId)
     && (currentUser.role === "teacher"
       ? item.teacherId === currentUser.tpfNumber
+        && teacherSubjectsForClass(currentUser, item.classId).some((subject) => subject.id === item.subjectId)
       : (currentUser.subjectIds || []).includes(item.subjectId)));
   if (!session) {
     showToast("This live class is not available for your account.");
@@ -784,7 +821,7 @@ function showStudentAssignmentModal(femisId) {
   }
   const selectedClass = classes.find((item) => item.id === student.classId) || classes[0];
   const assignedTeacher = accounts.find((account) => !account.disabled && account.role === "teacher"
-    && account.classId === selectedClass.id
+    && teacherAssignment(account, selectedClass.id)
     && (student.teacherTpf === account.tpfNumber || (!student.teacherTpf && account.studentIds?.includes(student.femisId))));
   const { backdrop, close } = showModal(
     `Assign ${escapeHTML(student.name)}`,
@@ -803,18 +840,19 @@ function showStudentAssignmentModal(femisId) {
   const subjectSelect = $("#student-subjects", backdrop);
   const initialSubjectIds = Array.isArray(student.subjectIds)
     ? student.subjectIds
-    : assignedTeacher ? teacherSubjects(assignedTeacher).map((subject) => subject.id) : [];
+    : assignedTeacher ? teacherSubjectsForClass(assignedTeacher, selectedClass.id).map((subject) => subject.id) : [];
 
   const updateSubjects = (selectedIds) => {
     const teacher = accounts.find((account) => !account.disabled && account.role === "teacher" && account.tpfNumber === teacherSelect.value);
-    const allowedSubjects = teacher ? teacherSubjects(teacher) : [];
+    const allowedSubjects = teacher ? teacherSubjectsForClass(teacher, classSelect.value) : [];
     subjectSelect.innerHTML = allowedSubjects
       .map((subject) => `<option value="${escapeHTML(subject.id)}">${escapeHTML(subject.name)}</option>`).join("");
     Array.from(subjectSelect.options).forEach((option) => { option.selected = selectedIds.includes(option.value); });
   };
   const updateTeachers = (keepExisting) => {
     const currentTeacherTpf = keepExisting ? teacherSelect.value : student.teacherTpf || assignedTeacher?.tpfNumber || "";
-    const classTeachers = accounts.filter((account) => !account.disabled && account.role === "teacher" && account.classId === classSelect.value);
+    const classTeachers = accounts.filter((account) => !account.disabled && account.role === "teacher"
+      && teacherAssignment(account, classSelect.value));
     teacherSelect.innerHTML = `<option value="">Choose a teacher</option>${classTeachers.map((teacher) => `<option value="${escapeHTML(teacher.tpfNumber)}">${escapeHTML(teacher.name)}</option>`).join("")}`;
     teacherSelect.value = classTeachers.some((teacher) => teacher.tpfNumber === currentTeacherTpf) ? currentTeacherTpf : "";
     const selectedIds = keepExisting
@@ -832,11 +870,11 @@ function showStudentAssignmentModal(femisId) {
     const teacher = accounts.find((account) => !account.disabled && account.role === "teacher" && account.tpfNumber === teacherSelect.value);
     const subjectIds = Array.from(subjectSelect.selectedOptions, (option) => option.value);
     const error = $("#student-assignment-error", backdrop);
-    if (!classItem || !teacher || teacher.classId !== classItem.id) {
+    if (!classItem || !teacher || !teacherAssignment(teacher, classItem.id)) {
       error.textContent = "Choose a teacher assigned to the selected class.";
       return;
     }
-    if (!subjectIds.length || !subjectIds.every((id) => teacherSubjects(teacher).some((subject) => subject.id === id))) {
+    if (!subjectIds.length || !subjectIds.every((id) => teacherSubjectsForClass(teacher, classItem.id).some((subject) => subject.id === id))) {
       error.textContent = "Choose at least one subject assigned to this teacher.";
       return;
     }
@@ -877,77 +915,70 @@ function showTeacherAssignmentModal(tpfNumber) {
     showToast("Create a class before assigning a teacher.");
     return;
   }
-  const selectedClass = classes.find((item) => item.id === teacher.classId) || classes[0];
-  const initialSubjects = Array.isArray(teacher.subjectIds)
-    ? teacher.subjectIds
-    : selectedClass.subjects.map((subject) => subject.id);
-  const initialStudents = Array.isArray(teacher.studentIds)
-    ? teacher.studentIds
-    : accounts.filter((account) => account.role === "student" && account.classId === selectedClass.id)
+  const initialAssignments = Array.isArray(teacher.classAssignments) && teacher.classAssignments.length
+    ? teacher.classAssignments
+    : teacher.classId ? [{ classId: teacher.classId, subjectIds: teacher.subjectIds || [] }] : [];
+  const assignmentSections = classes.map((classItem) => {
+    const assignment = initialAssignments.find((item) => item.classId === classItem.id);
+    const assignedSubjectIds = Array.isArray(assignment?.subjectIds) ? assignment.subjectIds : [];
+    const selectedStudentIds = accounts.filter((account) => account.role === "student"
+      && account.classId === classItem.id
+      && (account.teacherTpf === teacher.tpfNumber
+        || (!account.teacherTpf && teacher.studentIds?.includes(account.femisId))))
       .map((account) => account.femisId);
+    return `<fieldset class="full-width assignment-checklist teacher-class-assignment" data-class-assignment="${escapeHTML(classItem.id)}">
+      <legend><label class="check-option"><input type="checkbox" name="assignedClassIds" value="${escapeHTML(classItem.id)}" ${assignment ? "checked" : ""}><span>${escapeHTML(classItem.name)}</span></label></legend>
+      <div class="teacher-assignment-fields">
+        <strong>Subjects to teach</strong>
+        <div class="checklist-options">${classItem.subjects.length
+          ? classItem.subjects.map((subject) => `<label class="check-option"><input type="checkbox" name="subjectIds-${escapeHTML(classItem.id)}" value="${escapeHTML(subject.id)}" ${assignedSubjectIds.includes(subject.id) ? "checked" : ""}><span>${escapeHTML(subject.name)}</span></label>`).join("")
+          : `<span class="checklist-empty">No subjects created for this class.</span>`}</div>
+        <label for="teacher-students-${escapeHTML(classItem.id)}">Students assigned to this teacher in this class</label>
+        <select id="teacher-students-${escapeHTML(classItem.id)}" name="studentIds-${escapeHTML(classItem.id)}" multiple size="4">${accounts.filter((account) => account.role === "student" && account.classId === classItem.id).map((student) => `<option value="${escapeHTML(student.femisId)}" ${selectedStudentIds.includes(student.femisId) ? "selected" : ""}>${escapeHTML(student.name)} · ${escapeHTML(student.femisId)}</option>`).join("")}</select>
+        <p class="select-help">Use Ctrl or Command to select multiple students.</p>
+      </div>
+    </fieldset>`;
+  }).join("");
   const { backdrop, close } = showModal(
     `Assign ${escapeHTML(teacher.name)}`,
-    "Choose the teacher’s class, subjects and students.",
+    "Select every class this teacher teaches, then choose the subjects and students for each class.",
     `<form class="admin-form" id="teacher-assignment-form">
-      <div class="form-grid">
-        <div class="full-width"><label for="teacher-class">Class</label><select id="teacher-class" name="classId" required>${classes.map((item) => `<option value="${escapeHTML(item.id)}" ${item.id === selectedClass.id ? "selected" : ""}>${escapeHTML(item.name)}</option>`).join("")}</select></div>
-        <div class="full-width"><label for="teacher-subjects">Subjects</label><select id="teacher-subjects" name="subjectIds" multiple size="4"></select><p class="select-help">Select one or more subjects. Use Ctrl or Command to select multiple.</p></div>
-        <div class="full-width"><label for="teacher-students">Students</label><select id="teacher-students" name="studentIds" multiple size="6"></select><p class="select-help">Selected students will be assigned to this teacher and class. Use Ctrl or Command to select multiple.</p></div>
-      </div>
+      <div class="form-grid">${assignmentSections}</div>
       <div class="admin-form-actions"><button class="button button-dark" type="submit">Save assignments</button><p class="form-message" id="teacher-assignment-error" aria-live="polite"></p></div>
     </form>`,
   );
-  const classSelect = $("#teacher-class", backdrop);
-  const subjectSelect = $("#teacher-subjects", backdrop);
-  const studentSelect = $("#teacher-students", backdrop);
-  const populateOptions = (select, options, selectedValues) => {
-    select.innerHTML = options.map((option) => `<option value="${escapeHTML(option.value)}">${escapeHTML(option.label)}</option>`).join("");
-    Array.from(select.options).forEach((option) => {
-      option.selected = selectedValues.includes(option.value);
+  $$("[name='assignedClassIds']", backdrop).forEach((checkbox) => {
+    checkbox.addEventListener("change", () => {
+      $(`[data-class-assignment="${CSS.escape(checkbox.value)}"] .teacher-assignment-fields`, backdrop)
+        .classList.toggle("hidden", !checkbox.checked);
     });
-  };
-  const updateAssignmentOptions = (keepExisting = true) => {
-    const classId = classSelect.value;
-    const classItem = classes.find((item) => item.id === classId);
-    const previousSubjects = keepExisting
-      ? Array.from(subjectSelect.selectedOptions, (option) => option.value)
-      : initialSubjects;
-    const previousStudents = keepExisting
-      ? Array.from(studentSelect.selectedOptions, (option) => option.value)
-      : initialStudents;
-    populateOptions(
-      subjectSelect,
-      (classItem?.subjects || []).map((subject) => ({ value: subject.id, label: subject.name })),
-      previousSubjects,
-    );
-    populateOptions(
-      studentSelect,
-      accounts.filter((account) => account.role === "student" && account.classId === classId)
-        .map((account) => ({ value: account.femisId, label: `${account.name} · ${account.femisId}` })),
-      previousStudents,
-    );
-  };
-  classSelect.addEventListener("change", () => updateAssignmentOptions(true));
-  updateAssignmentOptions(false);
+    checkbox.dispatchEvent(new Event("change"));
+  });
   $("#teacher-assignment-form", backdrop).addEventListener("submit", async (event) => {
     event.preventDefault();
-    const classId = classSelect.value;
-    const classItem = classes.find((item) => item.id === classId);
-    const subjectIds = Array.from(subjectSelect.selectedOptions, (option) => option.value);
-    const studentIds = Array.from(studentSelect.selectedOptions, (option) => option.value);
+    const selectedAssignments = $$("[name='assignedClassIds']:checked", backdrop).map((checkbox) => {
+      const classItem = classes.find((item) => item.id === checkbox.value);
+      return {
+        classItem,
+        subjectIds: $$(`[name="subjectIds-${CSS.escape(checkbox.value)}"]:checked`, backdrop).map((input) => input.value),
+        studentIds: Array.from($(`[name="studentIds-${CSS.escape(checkbox.value)}"]`, backdrop).selectedOptions, (option) => option.value),
+      };
+    });
     const error = $("#teacher-assignment-error", backdrop);
-    if (!classItem) {
-      error.textContent = "Choose a valid class.";
+    if (!selectedAssignments.length) {
+      error.textContent = "Select at least one class for this teacher.";
       return;
     }
-    if (!subjectIds.length || !subjectIds.every((id) => classItem.subjects.some((subject) => subject.id === id))) {
-      error.textContent = "Assign at least one subject from the selected class.";
+    if (selectedAssignments.some(({ classItem, subjectIds }) => !classItem || !subjectIds.length
+      || !subjectIds.every((id) => classItem.subjects.some((subject) => subject.id === id)))) {
+      error.textContent = "Choose at least one valid subject in every selected class.";
       return;
     }
-    const selectedStudents = accounts.filter((account) => account.role === "student"
-      && account.classId === classItem.id
-      && studentIds.includes(account.femisId));
-    if (selectedStudents.length !== studentIds.length) {
+    const selectedStudentIds = selectedAssignments.flatMap(({ studentIds }) => studentIds);
+    const selectedStudents = accounts.filter((account) => account.role === "student" && selectedStudentIds.includes(account.femisId));
+    if (new Set(selectedStudentIds).size !== selectedStudentIds.length
+      || selectedAssignments.some(({ classItem, studentIds }) => accounts.filter((account) => account.role === "student"
+        && account.classId === classItem.id && studentIds.includes(account.femisId)).length !== studentIds.length)) {
       error.textContent = "One or more selected students are no longer available. Refresh and try again.";
       return;
     }
@@ -957,7 +988,7 @@ function showTeacherAssignmentModal(tpfNumber) {
         .map((account) => account.femisId),
     ]);
     previousStudentIds.forEach((previousId) => {
-      if (studentIds.includes(previousId)) return;
+      if (selectedStudentIds.includes(previousId)) return;
       const previousStudent = accounts.find((account) => account.role === "student" && account.femisId === previousId);
       if (previousStudent?.teacherTpf === teacher.tpfNumber) {
         delete previousStudent.teacherTpf;
@@ -972,18 +1003,30 @@ function showTeacherAssignmentModal(tpfNumber) {
           ? { ...item, studentIds: item.studentIds.filter((id) => id !== student.femisId) }
           : item);
       }
-      student.teacherTpf = teacher.tpfNumber;
-      student.subjectIds = [...subjectIds];
     });
-    teacher.classId = classItem.id;
-    teacher.subjectIds = subjectIds;
-    teacher.studentIds = [...studentIds];
-    selectedStudents.forEach((student) => { student.classId = classItem.id; });
-    const validSubjectIds = new Set(subjectIds);
+    selectedAssignments.forEach(({ classItem, subjectIds, studentIds }) => {
+      accounts.filter((account) => account.role === "student" && account.classId === classItem.id
+        && studentIds.includes(account.femisId)).forEach((student) => {
+        student.teacherTpf = teacher.tpfNumber;
+        student.subjectIds = [...subjectIds];
+      });
+    });
+    teacher.classAssignments = selectedAssignments.map(({ classItem, subjectIds }) => ({
+      classId: classItem.id,
+      subjectIds: [...subjectIds],
+    }));
+    teacher.classId = teacher.classAssignments[0].classId;
+    teacher.subjectIds = [...teacher.classAssignments[0].subjectIds];
+    teacher.studentIds = [...new Set(selectedStudents.map((student) => student.femisId))];
+    const validSubjectsByClass = new Map(teacher.classAssignments.map((assignment) => [assignment.classId, new Set(assignment.subjectIds)]));
     materials = materials.filter((item) => item.teacherId !== teacher.tpfNumber
-      || (item.classId === classItem.id && validSubjectIds.has(item.subjectId)));
+      || validSubjectsByClass.get(item.classId)?.has(item.subjectId));
     materials.forEach((item) => {
-      if (item.teacherId === teacher.tpfNumber) item.studentIds = [...studentIds];
+      if (item.teacherId === teacher.tpfNumber) {
+        item.studentIds = accounts.filter((student) => student.role === "student"
+          && student.classId === item.classId
+          && student.teacherTpf === teacher.tpfNumber).map((student) => student.femisId);
+      }
     });
     try {
       await saveStorage(STORAGE_KEYS.accounts, accounts);
@@ -994,7 +1037,7 @@ function showTeacherAssignmentModal(tpfNumber) {
     }
     close();
     renderPortal();
-    showToast(`${teacher.name}’s class, subjects and students were updated.`);
+    showToast(`${teacher.name}’s class, subject and student assignments were updated.`);
   });
 }
 
@@ -1160,11 +1203,11 @@ function showAccountModal(initialRole = "student") {
     const role = roleSelect.value;
     const classItem = classes.find((item) => item.id === classSelect.value);
     const teacher = role === "student"
-      ? accounts.find((account) => !account.disabled && account.role === "teacher" && account.tpfNumber === teacherSelect.value && account.classId === classSelect.value)
+      ? accounts.find((account) => !account.disabled && account.role === "teacher" && account.tpfNumber === teacherSelect.value && teacherAssignment(account, classSelect.value))
       : null;
     const availableSubjects = role === "teacher"
       ? classItem?.subjects || []
-      : teacher ? teacherSubjects(teacher) : [];
+      : teacher ? teacherSubjectsForClass(teacher, classItem?.id) : [];
     const showSubjects = role === "teacher" || Boolean(teacher);
     subjectField.classList.toggle("hidden", !showSubjects);
     $("#new-subject-legend", backdrop).textContent = role === "teacher" ? "Subjects this teacher will teach" : "Subjects for this student";
@@ -1173,7 +1216,8 @@ function showAccountModal(initialRole = "student") {
       : `<span class="checklist-empty">${role === "teacher" ? "No subjects in this class yet. Add them in Classes & subjects." : "This teacher has no subjects assigned yet."}</span>`;
   };
   const updateTeachers = () => {
-    const classTeachers = accounts.filter((account) => !account.disabled && account.role === "teacher" && account.classId === classSelect.value);
+    const classTeachers = accounts.filter((account) => !account.disabled && account.role === "teacher"
+      && teacherAssignment(account, classSelect.value));
     teacherSelect.innerHTML = `<option value="">Choose a teacher</option>${classTeachers.map((teacher) => `<option value="${escapeHTML(teacher.tpfNumber)}">${escapeHTML(teacher.name)}</option>`).join("")}`;
     teacherField.classList.toggle("hidden", roleSelect.value !== "student");
     updateSubjects();
@@ -1216,7 +1260,7 @@ function showAccountModal(initialRole = "student") {
       error.textContent = "Choose at least one subject for this teacher.";
       return;
     }
-    if (role === "student" && teacherTpf && (!selectedTeacher || !subjectIds.length || !subjectIds.every((id) => teacherSubjects(selectedTeacher).some((subject) => subject.id === id)))) {
+    if (role === "student" && teacherTpf && (!selectedTeacher || !subjectIds.length || !subjectIds.every((id) => teacherSubjectsForClass(selectedTeacher, classId).some((subject) => subject.id === id)))) {
       error.textContent = "Choose a teacher and at least one of their subjects, or leave the teacher unassigned.";
       return;
     }
@@ -1226,6 +1270,7 @@ function showAccountModal(initialRole = "student") {
       role,
       classId,
       subjectIds: [...subjectIds],
+      ...(role === "teacher" ? { classAssignments: [{ classId, subjectIds: [...subjectIds] }] } : {}),
       ...(role === "teacher" ? { studentIds: [] } : {}),
       ...(selectedTeacher ? { teacherTpf: selectedTeacher.tpfNumber } : {}),
     };
@@ -1265,10 +1310,9 @@ function showAccountModal(initialRole = "student") {
 }
 
 function showMaterialModal() {
-  const myClass = getAccountClass(currentUser);
-  const assignedSubjects = teacherSubjects(currentUser);
-  const assignedStudents = teacherStudents(currentUser);
-  if (!myClass || !assignedSubjects.length || !assignedStudents.length) {
+  const assignedClasses = classes.filter((classItem) => accountClassIds(currentUser).includes(classItem.id));
+  if (!assignedClasses.some((classItem) => teacherSubjectsForClass(currentUser, classItem.id).length
+    && teacherStudents(currentUser).some((student) => student.classId === classItem.id))) {
     showToast("Ask your administrator to assign your class, subjects and students first.");
     return;
   }
@@ -1285,11 +1329,12 @@ function showMaterialModal() {
     ["textbook", "Upload textbook"],
     ["exam-paper", "Upload past year exam paper"],
   ];
-  const { backdrop, close } = showModal("Post class material", "Share a resource with students in your class.", `
+  const { backdrop, close } = showModal("Post class material", "Choose an assigned class and subject for this resource.", `
     <form class="admin-form" id="material-form">
       <div class="form-grid">
+        <div><label for="material-class">Class</label><select id="material-class" name="classId" required>${assignedClasses.map((classItem) => `<option value="${escapeHTML(classItem.id)}">${escapeHTML(classItem.name)}</option>`).join("")}</select></div>
         <div><label for="material-type">Material type</label><select id="material-type" name="type" required>${types.map(([value, label]) => `<option value="${value}">${label}</option>`).join("")}</select></div>
-        <div><label for="material-subject">Subject</label><select id="material-subject" name="subjectId" required>${assignedSubjects.map((subject) => `<option value="${escapeHTML(subject.id)}">${escapeHTML(subject.name)}</option>`).join("")}</select></div>
+        <div><label for="material-subject">Subject</label><select id="material-subject" name="subjectId" required></select></div>
         <div class="full-width"><label for="material-title">Title</label><input id="material-title" name="title" required maxlength="100" placeholder="Give this post a title"></div>
         <div class="full-width"><label for="material-description" id="material-description-label">Content / instructions</label><textarea id="material-description" name="description" rows="5" required maxlength="5000" placeholder="Write the notes, activity, questions, or instructions for your students"></textarea></div>
         <div class="full-width hidden" id="material-file-field"><label for="material-file">Choose a file (PDF, DOC, DOCX or ODT)</label><input id="material-file" name="attachment" type="file" accept=".pdf,.doc,.docx,.odt,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.oasis.opendocument.text"><p class="select-help">Maximum file size: 50 MB. Files are saved in this browser only and are not available to students on other devices.</p></div>
@@ -1301,6 +1346,8 @@ function showMaterialModal() {
     </form>
   `);
   const typeSelect = $("#material-type", backdrop);
+  const classSelect = $("#material-class", backdrop);
+  const subjectSelect = $("#material-subject", backdrop);
   const urlField = $("#material-url-field", backdrop);
   const dueField = $("#material-due-field", backdrop);
   const fileField = $("#material-file-field", backdrop);
@@ -1329,6 +1376,13 @@ function showMaterialModal() {
           : type === "lesson" ? "Write lesson notes or learning instructions"
             : "Write the notes, activity, or instructions for your students";
   };
+  const updateSubjects = () => {
+    const subjects = teacherSubjectsForClass(currentUser, classSelect.value);
+    subjectSelect.innerHTML = subjects.map((subject) => `<option value="${escapeHTML(subject.id)}">${escapeHTML(subject.name)}</option>`).join("");
+    subjectSelect.disabled = !subjects.length;
+  };
+  classSelect.addEventListener("change", updateSubjects);
+  updateSubjects();
   typeSelect.addEventListener("change", updateMaterialFields);
   updateMaterialFields();
 
@@ -1338,7 +1392,11 @@ function showMaterialModal() {
     const type = String(formData.get("type"));
     const title = String(formData.get("title")).trim();
     const description = String(formData.get("description")).trim();
+    const classId = String(formData.get("classId"));
     const subjectId = String(formData.get("subjectId"));
+    const myClass = assignedClasses.find((classItem) => classItem.id === classId);
+    const assignedSubjects = teacherSubjectsForClass(currentUser, classId);
+    const assignedStudents = teacherStudents(currentUser).filter((student) => student.classId === classId);
     const url = String(formData.get("url") || "").trim();
     const attachment = formData.get("attachment");
     const availableAtInput = String(formData.get("availableAt") || "");
@@ -1346,7 +1404,7 @@ function showMaterialModal() {
     const error = $("#material-error", backdrop);
     const needsFile = type === "textbook" || type === "exam-paper";
     const allowedFile = attachment instanceof File && /\.(pdf|doc|docx|odt)$/i.test(attachment.name);
-    if (!types.some(([value]) => value === type) || !assignedSubjects.some((subject) => subject.id === subjectId) || !title || (!needsFile && !description)) {
+    if (!myClass || !types.some(([value]) => value === type) || !assignedSubjects.some((subject) => subject.id === subjectId) || !title || (!needsFile && !description)) {
       error.textContent = "Choose a subject and enter a title and the required content.";
       return;
     }
@@ -1377,7 +1435,7 @@ function showMaterialModal() {
       dueDate,
       ...(needsFile ? { attachmentId: materialId } : {}),
       ...(availableAt !== null ? { availableAt } : {}),
-      classId: myClass.id,
+      classId,
       subjectId,
       teacherId: currentUser.tpfNumber,
       studentIds: assignedStudents.map((student) => student.femisId),
@@ -1407,15 +1465,17 @@ function showMaterialModal() {
 }
 
 function showTermDatesModal() {
-  const myClass = getAccountClass(currentUser);
-  if (!myClass || currentUser.role !== "teacher") {
+  const assignedClasses = classes.filter((classItem) => accountClassIds(currentUser).includes(classItem.id));
+  if (!assignedClasses.length || currentUser.role !== "teacher") {
     showToast("Ask your administrator to assign your class before setting term dates.");
     return;
   }
-  const termDates = myClass.termStartDates || [myClass.termStartDate || "", "", ""];
-  const { backdrop, close } = showModal("Set term dates", `Set the start dates for each term in ${escapeHTML(myClass.name)}. Terms 1 and 2 have 14 weeks each; Term 3 has 13 weeks.`, `
+  const initialClass = assignedClasses[0];
+  const termDates = initialClass.termStartDates || [initialClass.termStartDate || "", "", ""];
+  const { backdrop, close } = showModal("Set term dates", "Set the start dates for each term in the selected class. Terms 1 and 2 have 14 weeks each; Term 3 has 13 weeks.", `
     <form class="admin-form" id="term-dates-form">
       <div class="form-grid">
+        <div class="full-width"><label for="term-date-class">Class</label><select id="term-date-class" name="classId">${assignedClasses.map((classItem) => `<option value="${escapeHTML(classItem.id)}">${escapeHTML(classItem.name)}</option>`).join("")}</select></div>
         <div class="full-width"><label for="term-start-date-1">Term 1 start date (14 weeks)</label><input id="term-start-date-1" name="termStartDate1" type="date" required value="${escapeHTML(termDates[0] || "")}"></div>
         <div class="full-width"><label for="term-start-date-2">Term 2 start date (14 weeks)</label><input id="term-start-date-2" name="termStartDate2" type="date" required value="${escapeHTML(termDates[1] || "")}"></div>
         <div class="full-width"><label for="term-start-date-3">Term 3 start date (13 weeks)</label><input id="term-start-date-3" name="termStartDate3" type="date" required value="${escapeHTML(termDates[2] || "")}"><p class="select-help">Each week runs for seven days from its start date. Term start dates must follow the end of the previous term.</p></div>
@@ -1423,6 +1483,15 @@ function showTermDatesModal() {
       <div class="admin-form-actions"><button class="button button-dark" type="submit">Save term dates</button><p class="form-message" id="term-dates-error" aria-live="polite"></p></div>
     </form>
   `);
+  const classSelect = $("#term-date-class", backdrop);
+  const updateDates = () => {
+    const classItem = assignedClasses.find((item) => item.id === classSelect.value);
+    const dates = classItem?.termStartDates || [classItem?.termStartDate || "", "", ""];
+    [1, 2, 3].forEach((termNumber) => {
+      $(`#term-start-date-${termNumber}`, backdrop).value = dates[termNumber - 1] || "";
+    });
+  };
+  classSelect.addEventListener("change", updateDates);
   $("#term-dates-form", backdrop).addEventListener("submit", async (event) => {
     event.preventDefault();
     const formData = new FormData(event.currentTarget);
@@ -1445,6 +1514,11 @@ function showTermDatesModal() {
         $("#term-dates-error", backdrop).textContent = `Term ${index + 2} must start after Term ${index + 1}'s ${termLengths[index]} weeks have finished.`;
         return;
       }
+    }
+    const myClass = assignedClasses.find((item) => item.id === classSelect.value);
+    if (!myClass) {
+      $("#term-dates-error", backdrop).textContent = "Choose one of your assigned classes.";
+      return;
     }
     myClass.termStartDates = dates;
     delete myClass.termStartDate;
@@ -1542,6 +1616,7 @@ async function removeClass(classId) {
   const classItem = classes.find((item) => item.id === classId);
   if (!classItem) return;
   const classAccounts = accounts.filter((account) => account.classId === classId);
+  const classStudentIds = classAccounts.filter((account) => account.role === "student").map((account) => account.femisId);
   const studentCount = classAccounts.filter((account) => account.role === "student").length;
   const teacherCount = classAccounts.filter((account) => account.role === "teacher").length;
   const materialCount = materials.filter((item) => item.classId === classId).length;
@@ -1556,11 +1631,18 @@ async function removeClass(classId) {
   const removedMaterials = materials.filter((item) => item.classId === classId);
   classes = classes.filter((item) => item.id !== classId);
   accounts.forEach((account) => {
-    if (account.classId === classId) {
+    if (account.role === "teacher" && Array.isArray(account.classAssignments)) {
+      account.classAssignments = account.classAssignments.filter((assignment) => assignment.classId !== classId);
+      account.studentIds = (account.studentIds || []).filter((id) => !classStudentIds.includes(id));
+      if (account.classId === classId) {
+        account.classId = account.classAssignments[0]?.classId || "";
+        account.subjectIds = account.classAssignments[0]?.subjectIds || [];
+      }
+    } else if (account.classId === classId) {
       account.classId = "";
       account.subjectIds = [];
-      delete account.teacherTpf;
-      account.studentIds = [];
+      if (account.role === "student") delete account.teacherTpf;
+      if (account.role === "teacher") account.studentIds = [];
     }
   });
   materials = materials.filter((item) => item.classId !== classId);
@@ -1590,7 +1672,14 @@ async function removeSubject(classId, subjectId) {
   const removedMaterials = materials.filter((item) => item.classId === classId && item.subjectId === subjectId);
   classItem.subjects = classItem.subjects.filter((item) => item.id !== subjectId);
   accounts.forEach((account) => {
-    if (account.classId === classId) {
+    if (account.role === "teacher" && Array.isArray(account.classAssignments)) {
+      const assignment = account.classAssignments.find((item) => item.classId === classId);
+      if (assignment) assignment.subjectIds = (assignment.subjectIds || []).filter((id) => id !== subjectId);
+      if (account.classId === classId) account.subjectIds = account.classAssignments.find((item) => item.classId === classId)?.subjectIds || [];
+    } else if (account.classId === classId) {
+      account.subjectIds = (account.subjectIds || []).filter((id) => id !== subjectId);
+    }
+    if (account.role === "student" && account.classId === classId) {
       account.subjectIds = (account.subjectIds || []).filter((id) => id !== subjectId);
     }
   });
