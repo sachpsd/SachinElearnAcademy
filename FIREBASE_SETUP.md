@@ -22,6 +22,10 @@ The app is live. Administrator sign-in has not yet been verified with the passwo
 - Existing localStorage accounts and records were not migrated.
 - File uploads remain in browser IndexedDB. They are only available in the browser that uploaded them.
 
+## Teacher weekly planning
+
+Teachers open **My class** and double-click an assigned class to open its term planner. Use **Set term dates** to enter the three term start dates; each term's weeks are calculated as seven-day periods. Select a term, expand a week, choose a content type, and select **Add** to post a lesson, notes, activity questions, quiz, assignment, general post, Dropbox link, or video to that class and week. Week dates control the default student release date, and posts appear under the matching week in the student subject view.
+
 ## Finish the Firebase connection
 
 1. The indexes have been created in **Firestore Database → Indexes → Manual** and were verified as enabled:
