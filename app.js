@@ -532,8 +532,8 @@ function renderTeacherView() {
   if (currentView === "password") return renderPasswordView();
   if (currentView === "live-classes") return renderLiveClassesView();
   if (currentView === "materials") {
-    const action = teacherSubjects(currentUser).length && teacherStudents(currentUser).length ? `<button class="button button-dark" type="button" data-action="new-material">+ Post material</button>` : "";
-    return `${portalHeading("TEACHING SPACE", "Teaching materials", "Post lessons and activities, or upload textbooks and past year exam papers for each assigned subject.", action)}<section class="portal-panel"><div class="panel-heading"><h3>Your class posts</h3><span>${currentClassMaterials().length} posts</span></div>${renderMaterials(currentClassMaterials(), "No materials yet. Once the administrator creates subjects for your class, you can share resources here.")}</section>`;
+    const action = teacherSubjects(currentUser).length ? `<button class="button button-dark" type="button" data-action="new-material">+ Post material</button>` : "";
+    return `${portalHeading("TEACHING SPACE", "Teaching materials", "Post lessons, notes, activities, quizzes and assignments for each assigned subject.", action)}<section class="portal-panel"><div class="panel-heading"><h3>Your class posts</h3><span>${currentClassMaterials().length} posts</span></div>${renderMaterials(currentClassMaterials(), "No materials yet. Once the administrator assigns subjects to your class, you can share resources here.")}</section>`;
   }
   const myClass = getAccountClass(currentUser);
   const assignedClasses = classes.filter((classItem) => accountClassIds(currentUser).includes(classItem.id));
@@ -542,13 +542,13 @@ function renderTeacherView() {
   const subjectCount = assignedSubjects.length;
   const classMaterials = currentClassMaterials();
   if (assignedClasses.length) {
-    const teacherActions = `<div class="account-row-actions"><button class="button button-light" type="button" data-action="set-term-dates">Set term dates</button>${subjectCount && classStudents.length ? `<button class="button button-dark" type="button" data-action="new-material">+ Post material</button>` : ""}</div>`;
+    const teacherActions = `<div class="account-row-actions"><button class="button button-light" type="button" data-action="set-term-dates">Set term dates</button>${subjectCount ? `<button class="button button-dark" type="button" data-action="new-material">+ Post material</button>` : ""}</div>`;
     const classSections = assignedClasses.map((classItem) => {
       const subjects = teacherSubjectsForClass(currentUser, classItem.id);
       const students = classStudents.filter((student) => student.classId === classItem.id);
       return `<section class="portal-panel"><div class="panel-heading"><h3>${escapeHTML(classItem.name)}</h3><span>${students.length} students</span></div>${subjects.length ? `<div class="subject-grid">${subjects.map((subject) => `<article class="subject-card"><span class="program-icon" aria-hidden="true">✳</span><h4>${escapeHTML(subject.name)}</h4><p>${escapeHTML(subject.description || "Share resources and activities for this subject.")}</p></article>`).join("")}</div>` : `<div class="empty-state">Ask your administrator to assign subjects for this class.</div>`}<div class="assigned-student-list"><h4>Students assigned to you</h4>${students.length ? students.map((student) => `<span class="assigned-student">${escapeHTML(student.name)}</span>`).join("") : `<p class="portal-subtitle">No students assigned yet.</p>`}</div></section>`;
     }).join("");
-    return `${portalHeading("TEACHING SPACE", `Welcome, ${escapeHTML(currentUser.name.split(" ")[0])}.`, `You teach ${assignedClasses.length} ${assignedClasses.length === 1 ? "class" : "classes"}. Share learning materials with your assigned students.`, teacherActions)}<div class="stat-grid">${statCard("MY CLASSES", assignedClasses.length, "Assigned by your administrator")}${statCard("SUBJECTS", subjectCount, "Across all assigned classes")}${statCard("MY STUDENTS", classStudents.length, "Across all assigned classes")}</div>${classSections}<section class="portal-panel"><div class="panel-heading"><h3>Recent class materials</h3><span>${classMaterials.length} posts</span></div>${renderMaterials(classMaterials.slice(0, 4), "Your class materials will appear here after you post them.")}</section>`;
+    return `${portalHeading("TEACHING SPACE", `Welcome, ${escapeHTML(currentUser.name.split(" ")[0])}.`, `You teach ${assignedClasses.length} ${assignedClasses.length === 1 ? "class" : "classes"}. Post lessons, notes, quizzes and activities to your assigned classes.`, teacherActions)}<div class="stat-grid">${statCard("MY CLASSES", assignedClasses.length, "Assigned by your administrator")}${statCard("SUBJECTS", subjectCount, "Across all assigned classes")}${statCard("MY STUDENTS", classStudents.length, "Across all assigned classes")}</div>${classSections}<section class="portal-panel"><div class="panel-heading"><h3>Recent class materials</h3><span>${classMaterials.length} posts</span></div>${renderMaterials(classMaterials.slice(0, 4), "Your class materials will appear here after you post them.")}</section>`;
   }
   return `${portalHeading("TEACHING SPACE", `Welcome, ${escapeHTML(currentUser.name.split(" ")[0])}.`, myClass ? `Your class: ${escapeHTML(myClass.name)}. Share learning materials with your students.` : "You have not been assigned to a class yet.", subjectCount ? `<button class="button button-dark" type="button" data-action="new-material">+ Post material</button>` : "")}<div class="stat-grid">${statCard("MY CLASS", myClass ? escapeHTML(myClass.name) : "—", "Assigned by your administrator")}${statCard("SUBJECTS", subjectCount, "Created by your administrator")}${statCard("CLASS MATERIALS", classMaterials.length, "Shared with your students")}</div><section class="portal-panel"><div class="panel-heading"><h3>${myClass ? `${escapeHTML(myClass.name)} subjects` : "Class assignment"}</h3><span>${classStudents.length} students</span></div>${myClass && subjectCount ? `<div class="subject-grid">${myClass.subjects.map((subject) => `<article class="subject-card"><span class="program-icon" aria-hidden="true">✳</span><h4>${escapeHTML(subject.name)}</h4><p>${escapeHTML(subject.description || "Share resources and activities for this subject.")}</p></article>`).join("")}</div>` : `<div class="empty-state">Ask your administrator to assign you to a class and create subjects. Teachers cannot create classes or subjects.</div>`}</section><section class="portal-panel"><div class="panel-heading"><h3>Recent class materials</h3><span>${classMaterials.length} posts</span></div>${renderMaterials(classMaterials.slice(0, 4), "Your class materials will appear here after you post them.")}</section>`;
 }
@@ -1313,9 +1313,8 @@ function showAccountModal(initialRole = "student") {
 
 function showMaterialModal() {
   const assignedClasses = classes.filter((classItem) => accountClassIds(currentUser).includes(classItem.id));
-  if (!assignedClasses.some((classItem) => teacherSubjectsForClass(currentUser, classItem.id).length
-    && teacherStudents(currentUser).some((student) => student.classId === classItem.id))) {
-    showToast("Ask your administrator to assign your class, subjects and students first.");
+  if (!assignedClasses.some((classItem) => teacherSubjectsForClass(currentUser, classItem.id).length)) {
+    showToast("Ask your administrator to assign your class and subjects first.");
     return;
   }
   const types = [
@@ -1331,7 +1330,7 @@ function showMaterialModal() {
     ["textbook", "Upload textbook"],
     ["exam-paper", "Upload past year exam paper"],
   ];
-  const { backdrop, close } = showModal("Post class material", "Choose an assigned class and subject for this resource.", `
+  const { backdrop, close } = showModal("Post class material", "Choose an assigned class and subject. If no students are individually assigned to you, the post will be available to everyone enrolled in that subject.", `
     <form class="admin-form" id="material-form">
       <div class="form-grid">
         <div><label for="material-class">Class</label><select id="material-class" name="classId" required>${assignedClasses.map((classItem) => `<option value="${escapeHTML(classItem.id)}">${escapeHTML(classItem.name)}</option>`).join("")}</select></div>
@@ -1440,7 +1439,7 @@ function showMaterialModal() {
       classId,
       subjectId,
       teacherId: currentUser.tpfNumber,
-      studentIds: assignedStudents.map((student) => student.femisId),
+      ...(assignedStudents.length ? { studentIds: assignedStudents.map((student) => student.femisId) } : {}),
       teacherName: currentUser.name,
       createdAt: Date.now(),
     };
