@@ -13,11 +13,11 @@
 
 The website now uses Firebase Authentication and Cloud Firestore for accounts, classes, materials, and live-class schedules. Student and teacher passwords are managed by Firebase Authentication and are not written to Firestore. Student FEMIS IDs and teacher TPF numbers are mapped to generated Firebase email addresses internally; users still sign in with their name, ID, and password.
 
-The app is live. Firebase account sign-in is **awaiting the administrator's password reset**:
+The app is live. Administrator sign-in has not yet been verified with the password set by the account owner:
 
 - The Firestore rules have been published from the Firebase Console. All five composite indexes listed in `firestore.indexes.json` are enabled.
-- The administrator Firebase Authentication account and trusted Firestore profile have been created for the email provided by the owner. A password-reset email has been sent; the administrator must use it to set a password before signing in.
-- A password-reset email has been sent to the administrator. The live site's Firebase Auth endpoint responds from the GitHub Pages origin, but successful sign-in with the administrator's chosen password has not been verified.
+- The administrator Firebase Authentication account and trusted Firestore profile have been created. A password-reset email was sent and the owner reports completing it.
+- The live site's Firebase Auth endpoint responds from the GitHub Pages origin. Successful sign-in with the administrator's chosen password has not been verified; do not share that password.
 - The Firebase Web API key is restricted to `https://sachpsd.github.io/*` as an HTTP referrer. Its API restriction list remains unchanged.
 - Existing localStorage accounts and records were not migrated.
 - File uploads remain in browser IndexedDB. They are only available in the browser that uploaded them.
@@ -39,7 +39,7 @@ The app is live. Firebase account sign-in is **awaiting the administrator's pass
 
    The published rules match `firestore.rules`. Do not create a permissive temporary rule to make the app work.
 
-2. The administrator login has been created. Use the password-reset email sent to the configured admin email to set a strong password; the old `1234` password is not used.
+2. The administrator login has been created, and the owner reports completing the password reset. The old `1234` password is not used.
 
 3. The trusted administrator profile has been created in **Firestore Database → Data** as `users/{ADMIN_UID}`. It contains:
 
@@ -55,7 +55,7 @@ The app is live. Firebase account sign-in is **awaiting the administrator's pass
 
 4. The Firebase Web API key is restricted in Google Cloud Console to the production referrer `https://sachpsd.github.io/*`. Verify sign-in from the live GitHub Pages URL after completing the password reset.
 
-5. After completing the password reset, verify admin login, class and subject setup, teacher/student provisioning, password changes, membership-based access, scheduled release times, and live-class visibility before onboarding students.
+5. Sign in with the reset password, then verify class and subject setup, teacher/student provisioning, password changes, membership-based access, scheduled release times, and live-class visibility before onboarding students.
 
 ## Data and upload limitations
 
