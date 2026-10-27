@@ -13,11 +13,11 @@
 
 The website now uses Firebase Authentication and Cloud Firestore for accounts, classes, materials, and live-class schedules. Student and teacher passwords are managed by Firebase Authentication and are not written to Firestore. Student FEMIS IDs and teacher TPF numbers are mapped to generated Firebase email addresses internally; users still sign in with their name, ID, and password.
 
-The app is live, but account sign-in is **not ready for real users yet**:
+The app is live. Firebase account sign-in is **awaiting the administrator's password reset**:
 
 - The Firestore rules have been published from the Firebase Console. All five composite indexes listed in `firestore.indexes.json` are enabled.
-- No administrator Firebase Auth account or trusted Firestore admin profile exists yet. The project currently has no Authentication users.
-- Firebase's Authorized domains form rejected `sachpsd.github.io`; email/password sign-in should be tested after the admin account is bootstrapped. Do not claim login is working until that test succeeds.
+- The administrator Firebase Authentication account and trusted Firestore profile have been created for the email provided by the owner. A password-reset email has been sent; the administrator must use it to set a password before signing in.
+- Firebase's Authorized domains form rejected `sachpsd.github.io`; email/password sign-in should be tested after the admin completes the password reset. Do not claim login is working until that test succeeds.
 - The Firebase Web API key has not been restricted to the production site domain.
 - Existing localStorage accounts and records were not migrated.
 - File uploads remain in browser IndexedDB. They are only available in the browser that uploaded them.
@@ -39,9 +39,9 @@ The app is live, but account sign-in is **not ready for real users yet**:
 
    The published rules match `firestore.rules`. Do not create a permissive temporary rule to make the app work.
 
-2. Create the administrator login in Firebase Console under **Authentication → Users → Add user**. Use an admin email and a strong password; the old `1234` password is not used.
+2. The administrator login has been created. Use the password-reset email sent to the configured admin email to set a strong password; the old `1234` password is not used.
 
-3. In **Firestore Database → Data**, create `users/{ADMIN_UID}` using the UID shown for that Authentication user. The document must contain at least:
+3. The trusted administrator profile has been created in **Firestore Database → Data** as `users/{ADMIN_UID}`. It contains:
 
    ```json
    {
@@ -55,7 +55,7 @@ The app is live, but account sign-in is **not ready for real users yet**:
 
 4. In Google Cloud Console, restrict the Firebase Web API key to the production site and the Firebase APIs the client uses. Avoid broad API-key restrictions that could break Authentication or Firestore. Firebase Console rejected `sachpsd.github.io` when adding it as an Authorized domain, so verify email/password sign-in from the live GitHub Pages URL before onboarding users.
 
-5. After creating the admin account/profile, verify admin login, class and subject setup, teacher/student provisioning, password changes, membership-based access, scheduled release times, and live-class visibility before onboarding students.
+5. After completing the password reset, verify admin login, class and subject setup, teacher/student provisioning, password changes, membership-based access, scheduled release times, and live-class visibility before onboarding students.
 
 ## Data and upload limitations
 
