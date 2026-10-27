@@ -23,7 +23,9 @@ const escapeHTML = (value) => String(value).replace(/[&<>"']/g, (character) => (
 })[character]);
 
 async function saveStorage(key, value) {
-  await window.SachinelearnFirebase.writeRecords(key, value);
+  const collectionKey = Object.keys(STORAGE_KEYS).find((name) => STORAGE_KEYS[name] === key);
+  if (!collectionKey) throw new Error(`Unknown academy storage key: ${key}.`);
+  await window.SachinelearnFirebase.writeRecords(collectionKey, value);
 }
 
 function openAttachmentDatabase() {
