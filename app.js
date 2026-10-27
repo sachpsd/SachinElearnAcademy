@@ -12,6 +12,8 @@ let liveClasses = [];
 let activeRole = "student";
 let currentUser = null;
 let currentView = "overview";
+let activeTeacherClassId = "";
+let activeTeacherTermNumber = 1;
 let toastTimer;
 let attachmentDatabase;
 let attachmentObjectUrls = [];
@@ -351,7 +353,7 @@ function materialTypeLabel(type) {
     quiz: "Quiz",
     practice: "Practice questions",
     activity: "Activity",
-    forum: "Forum post",
+    forum: "General post",
     video: "Video",
     assignment: "Assignment",
     dropbox: "Dropbox",
@@ -376,7 +378,7 @@ function academicTerms(classItem, items) {
     { name: "Term 2", weeks: 14, startDate: classItem?.termStartDates?.[1] || "" },
     { name: "Term 3", weeks: 13, startDate: classItem?.termStartDates?.[2] || "" },
   ];
-  return termSettings.map((term) => {
+  return termSettings.map((term, termIndex) => {
     const start = parseLocalDate(term.startDate);
     const weeks = Array.from({ length: term.weeks }, (_, index) => {
       const weekStart = start ? new Date(start) : null;
@@ -385,6 +387,9 @@ function academicTerms(classItem, items) {
       if (weekEnd) weekEnd.setDate(weekEnd.getDate() + 7);
       const weekItems = weekStart && weekEnd
         ? items.filter((item) => {
+          if (Number.isInteger(item.termNumber) && Number.isInteger(item.weekNumber)) {
+            return item.termNumber === termIndex + 1 && item.weekNumber === index + 1;
+          }
           const activityDate = Number.isFinite(item.availableAt) ? item.availableAt : item.createdAt;
           return Number.isFinite(activityDate)
             && activityDate >= weekStart.getTime()
@@ -414,11 +419,12 @@ function academicTerms(classItem, items) {
 function renderStudentWeekItems(items) {
   const sections = [
     { title: "Lessons", types: ["lesson", "note"] },
-    { title: "Class activities", types: ["activity", "forum"] },
+    { title: "Activity questions", types: ["activity", "practice"] },
     { title: "Quizzes", types: ["quiz"] },
-    { title: "Practice questions", types: ["practice"] },
+    { title: "Assignments", types: ["assignment"] },
+    { title: "General posts", types: ["forum"] },
+    { title: "Dropbox", types: ["dropbox"] },
     { title: "Videos", types: ["video"] },
-    { title: "Other class resources", types: ["assignment", "dropbox"] },
   ];
   return `<div class="subject-learning-sections">${sections.map((section) => {
       const sectionItems = items.filter((item) => section.types.includes(item.type));
@@ -531,6 +537,7 @@ function renderStudentView() {
 function renderTeacherView() {
   if (currentView === "password") return renderPasswordView();
   if (currentView === "live-classes") return renderLiveClassesView();
+  if (currentView === "teacher-class") return renderTeacherClassView();
   if (currentView === "materials") {
     const action = teacherSubjects(currentUser).length ? `<button class="button button-dark" type="button" data-action="new-material">+ Post material</button>` : "";
     return `${portalHeading("TEACHING SPACE", "Teaching materials", "Post lessons, notes, activities, quizzes and assignments for each assigned subject.", action)}<section class="portal-panel"><div class="panel-heading"><h3>Your class posts</h3><span>${currentClassMaterials().length} posts</span></div>${renderMaterials(currentClassMaterials(), "No materials yet. Once the administrator assigns subjects to your class, you can share resources here.")}</section>`;
@@ -546,11 +553,67 @@ function renderTeacherView() {
     const classSections = assignedClasses.map((classItem) => {
       const subjects = teacherSubjectsForClass(currentUser, classItem.id);
       const students = classStudents.filter((student) => student.classId === classItem.id);
-      return `<section class="portal-panel"><div class="panel-heading"><h3>${escapeHTML(classItem.name)}</h3><span>${students.length} students</span></div>${subjects.length ? `<div class="subject-grid">${subjects.map((subject) => `<article class="subject-card"><span class="program-icon" aria-hidden="true">✳</span><h4>${escapeHTML(subject.name)}</h4><p>${escapeHTML(subject.description || "Share resources and activities for this subject.")}</p></article>`).join("")}</div>` : `<div class="empty-state">Ask your administrator to assign subjects for this class.</div>`}<div class="assigned-student-list"><h4>Students assigned to you</h4>${students.length ? students.map((student) => `<span class="assigned-student">${escapeHTML(student.name)}</span>`).join("") : `<p class="portal-subtitle">No students assigned yet.</p>`}</div></section>`;
+      return `<section class="portal-panel teacher-class-card" data-teacher-class="${escapeHTML(classItem.id)}" tabindex="0" aria-label="Double-click to open ${escapeHTML(classItem.name)} term and week planner"><div class="panel-heading"><h3>${escapeHTML(classItem.name)}</h3><span>${students.length} students</span></div><p class="teacher-class-open-hint">Double-click this class to set term dates and add weekly lessons and activities.</p>${subjects.length ? `<div class="subject-grid">${subjects.map((subject) => `<article class="subject-card"><span class="program-icon" aria-hidden="true">✳</span><h4>${escapeHTML(subject.name)}</h4><p>${escapeHTML(subject.description || "Share resources and activities for this subject.")}</p></article>`).join("")}</div>` : `<div class="empty-state">Ask your administrator to assign subjects for this class.</div>`}<div class="assigned-student-list"><h4>Students assigned to you</h4>${students.length ? students.map((student) => `<span class="assigned-student">${escapeHTML(student.name)}</span>`).join("") : `<p class="portal-subtitle">No students assigned yet.</p>`}</div></section>`;
     }).join("");
     return `${portalHeading("TEACHING SPACE", `Welcome, ${escapeHTML(currentUser.name.split(" ")[0])}.`, `You teach ${assignedClasses.length} ${assignedClasses.length === 1 ? "class" : "classes"}. Post lessons, notes, quizzes and activities to your assigned classes.`, teacherActions)}<div class="stat-grid">${statCard("MY CLASSES", assignedClasses.length, "Assigned by your administrator")}${statCard("SUBJECTS", subjectCount, "Across all assigned classes")}${statCard("MY STUDENTS", classStudents.length, "Across all assigned classes")}</div>${classSections}<section class="portal-panel"><div class="panel-heading"><h3>Recent class materials</h3><span>${classMaterials.length} posts</span></div>${renderMaterials(classMaterials.slice(0, 4), "Your class materials will appear here after you post them.")}</section>`;
   }
   return `${portalHeading("TEACHING SPACE", `Welcome, ${escapeHTML(currentUser.name.split(" ")[0])}.`, myClass ? `Your class: ${escapeHTML(myClass.name)}. Share learning materials with your students.` : "You have not been assigned to a class yet.", subjectCount ? `<button class="button button-dark" type="button" data-action="new-material">+ Post material</button>` : "")}<div class="stat-grid">${statCard("MY CLASS", myClass ? escapeHTML(myClass.name) : "—", "Assigned by your administrator")}${statCard("SUBJECTS", subjectCount, "Created by your administrator")}${statCard("CLASS MATERIALS", classMaterials.length, "Shared with your students")}</div><section class="portal-panel"><div class="panel-heading"><h3>${myClass ? `${escapeHTML(myClass.name)} subjects` : "Class assignment"}</h3><span>${classStudents.length} students</span></div>${myClass && subjectCount ? `<div class="subject-grid">${myClass.subjects.map((subject) => `<article class="subject-card"><span class="program-icon" aria-hidden="true">✳</span><h4>${escapeHTML(subject.name)}</h4><p>${escapeHTML(subject.description || "Share resources and activities for this subject.")}</p></article>`).join("")}</div>` : `<div class="empty-state">Ask your administrator to assign you to a class and create subjects. Teachers cannot create classes or subjects.</div>`}</section><section class="portal-panel"><div class="panel-heading"><h3>Recent class materials</h3><span>${classMaterials.length} posts</span></div>${renderMaterials(classMaterials.slice(0, 4), "Your class materials will appear here after you post them.")}</section>`;
+}
+
+function teacherWeekSections() {
+  return [
+    { title: "Lessons", types: ["lesson", "note"] },
+    { title: "Activity questions", types: ["activity", "practice"] },
+    { title: "Quiz", types: ["quiz"] },
+    { title: "Assignments", types: ["assignment"] },
+    { title: "General posts", types: ["forum"] },
+    { title: "Dropbox", types: ["dropbox"] },
+  ];
+}
+
+function renderTeacherClassView() {
+  const classItem = classes.find((item) => item.id === activeTeacherClassId
+    && accountClassIds(currentUser).includes(item.id));
+  if (!classItem) {
+    currentView = "overview";
+    return renderTeacherView();
+  }
+  const termNumber = Math.min(3, Math.max(1, activeTeacherTermNumber));
+  const items = currentClassMaterials().filter((item) => item.classId === classItem.id);
+  const term = academicTerms(classItem, items)[termNumber - 1];
+  const sectionTypes = teacherWeekSections();
+  const typeOptions = [
+    ["lesson", "Lesson"], ["note", "Notes"], ["activity", "Activity"],
+    ["practice", "Activity questions"], ["quiz", "Quiz"], ["assignment", "Assignment"],
+    ["forum", "General post"], ["dropbox", "Dropbox"], ["video", "Video"],
+  ];
+  const weeks = term.weeks.map((week) => {
+    const formatDate = (date) => new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short", year: "numeric" }).format(date);
+    const dateRange = week.start && week.end ? `${formatDate(week.start)} – ${formatDate(week.end)}` : "Dates not set";
+    const sectionMarkup = sectionTypes.map((section) => {
+      const sectionItems = week.items.filter((item) => section.types.includes(item.type));
+      return `<section class="teacher-week-section"><div class="teacher-week-section-heading"><h4>${section.title}</h4><span>${sectionItems.length}</span></div>${renderMaterials(sectionItems, `No ${section.title.toLowerCase()} posted for this week.`)}</section>`;
+    }).join("");
+    const resources = week.items.filter((item) => !sectionTypes.some((section) => section.types.includes(item.type)));
+    const otherMarkup = resources.length
+      ? `<section class="teacher-week-section"><div class="teacher-week-section-heading"><h4>Other resources</h4><span>${resources.length}</span></div>${renderMaterials(resources, "")}</section>`
+      : "";
+    return `<details class="teacher-week" data-week-planner data-class-id="${escapeHTML(classItem.id)}" data-term-number="${termNumber}" data-week-number="${week.number}" ${week.isCurrent || (!term.start && week.number === 1) ? "open" : ""}>
+      <summary><span>Week ${week.number}</span><small>${escapeHTML(dateRange)}</small><span class="week-material-count">${week.items.length}</span></summary>
+      <div class="teacher-week-content">
+        <p class="teacher-week-dates">${week.start ? `Week starts ${escapeHTML(formatDate(week.start))}.` : "Set term start dates to calculate this week's dates."}</p>
+        <div class="teacher-week-add-row"><label><span class="sr-only">Content type to add</span><select data-week-material-type aria-label="Content type to add to Week ${week.number}">${typeOptions.map(([type, label]) => `<option value="${type}">${label}</option>`).join("")}</select></label><button class="button button-dark" type="button" data-action="add-week-material">+ Add to Week ${week.number}</button></div>
+        <div class="teacher-week-sections">${sectionMarkup}${otherMarkup}</div>
+      </div>
+    </details>`;
+  }).join("");
+  const heading = portalHeading(
+    "TEACHING SPACE",
+    escapeHTML(classItem.name),
+    "Choose a term, set its start date, and add resources to the relevant week.",
+    `<div class="account-row-actions"><button class="button button-light" type="button" data-action="back-to-teacher-classes">← My classes</button><button class="button button-light" type="button" data-action="set-class-term-dates" data-class-id="${escapeHTML(classItem.id)}">Set term dates</button></div>`,
+  );
+  return `${heading}<section class="portal-panel teacher-term-panel"><div><label for="teacher-planner-term">Term</label><select id="teacher-planner-term">${[1, 2, 3].map((number) => `<option value="${number}" ${number === termNumber ? "selected" : ""}>Term ${number} · ${number === 3 ? 13 : 14} weeks</option>`).join("")}</select></div>${term.start ? `<p class="teacher-week-dates">${escapeHTML(term.name)} starts ${new Intl.DateTimeFormat(undefined, { dateStyle: "long" }).format(term.start)}. Each week runs seven days.</p>` : `<p class="term-dates-prompt">Week dates are not set. Select Set term dates to enter start dates for all three terms.</p>`}</section><section class="portal-panel"><div class="panel-heading"><h3>${escapeHTML(term.name)} weekly plan</h3><span>${term.weeks.length} weeks</span></div><div class="teacher-weeks">${weeks}</div></section>`;
 }
 
 function renderAdminView() {
@@ -612,6 +675,31 @@ function renderAdminClasses() {
 }
 
 function wirePortalActions() {
+  const content = $("#portal-content");
+  content.ondblclick = (event) => {
+    if (event.target.closest("button, a, input, select, textarea")) return;
+    const classCard = event.target.closest("[data-teacher-class]");
+    if (!classCard) return;
+    activeTeacherClassId = classCard.dataset.teacherClass;
+    activeTeacherTermNumber = 1;
+    currentView = "teacher-class";
+    renderPortal();
+  };
+  content.onkeydown = (event) => {
+    if (!["Enter", " "].includes(event.key) || event.target.closest("button, a, input, select, textarea")) return;
+    const classCard = event.target.closest("[data-teacher-class]");
+    if (!classCard) return;
+    event.preventDefault();
+    activeTeacherClassId = classCard.dataset.teacherClass;
+    activeTeacherTermNumber = 1;
+    currentView = "teacher-class";
+    renderPortal();
+  };
+  content.onchange = (event) => {
+    if (event.target.id !== "teacher-planner-term") return;
+    activeTeacherTermNumber = Number(event.target.value);
+    renderPortal();
+  };
   $$("[data-action]", $("#portal-content")).forEach((button) => {
     button.addEventListener("click", async () => {
       const { action } = button.dataset;
@@ -629,9 +717,23 @@ function wirePortalActions() {
       if (action === "new-class") showClassModal();
       if (action === "new-subject") showSubjectModal(button.dataset.classId || "");
       if (action === "new-material") showMaterialModal();
+      if (action === "add-week-material") {
+        const week = button.closest("[data-week-planner]");
+        if (week) showMaterialModal({
+          classId: week.dataset.classId,
+          termNumber: Number(week.dataset.termNumber),
+          weekNumber: Number(week.dataset.weekNumber),
+          type: $("[data-week-material-type]", week).value,
+        });
+      }
+      if (action === "back-to-teacher-classes") {
+        currentView = "overview";
+        renderPortal();
+      }
       if (action === "schedule-live-class") showLiveClassModal();
       if (action === "join-live-class") joinLiveClass(button.dataset.liveClassId);
       if (action === "set-term-dates") showTermDatesModal();
+      if (action === "set-class-term-dates") showTermDatesModal(button.dataset.classId);
       if (action === "new-password") showPasswordModal();
       if (action === "edit-account") showAccountEditModal(button.dataset.accountRole, button.dataset.identifier);
       if (action === "edit-class") showClassModal(button.dataset.classId);
@@ -1311,8 +1413,9 @@ function showAccountModal(initialRole = "student") {
   });
 }
 
-function showMaterialModal() {
-  const assignedClasses = classes.filter((classItem) => accountClassIds(currentUser).includes(classItem.id));
+function showMaterialModal(options = {}) {
+  const assignedClasses = classes.filter((classItem) => accountClassIds(currentUser).includes(classItem.id))
+    .sort((a, b) => Number(b.id === options.classId) - Number(a.id === options.classId));
   if (!assignedClasses.some((classItem) => teacherSubjectsForClass(currentUser, classItem.id).length)) {
     showToast("Ask your administrator to assign your class and subjects first.");
     return;
@@ -1323,14 +1426,26 @@ function showMaterialModal() {
     ["quiz", "Quiz"],
     ["practice", "Practice questions"],
     ["activity", "Activity"],
-    ["forum", "Forum post"],
+    ["forum", "General post"],
     ["video", "Video"],
     ["assignment", "Assignment"],
     ["dropbox", "Dropbox"],
     ["textbook", "Upload textbook"],
     ["exam-paper", "Upload past year exam paper"],
   ];
-  const { backdrop, close } = showModal("Post class material", "Choose an assigned class and subject. If no students are individually assigned to you, the post will be available to everyone enrolled in that subject.", `
+  const weekDescription = Number.isInteger(options.termNumber) && Number.isInteger(options.weekNumber)
+    ? ` This post will be filed under Term ${options.termNumber}, Week ${options.weekNumber}.`
+    : "";
+  const plannedClass = assignedClasses.find((classItem) => classItem.id === options.classId);
+  const plannedWeekStart = plannedClass && Number.isInteger(options.termNumber) && Number.isInteger(options.weekNumber)
+    ? academicTerms(plannedClass, [])[options.termNumber - 1]?.weeks[options.weekNumber - 1]?.start
+    : null;
+  const availabilityHint = plannedWeekStart
+    ? `Students can access this post from ${new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(plannedWeekStart)}. Choose a later release date to delay access.`
+    : Number.isInteger(options.termNumber)
+      ? "Term dates are not set yet, so the post will be available immediately. Leave blank to publish now."
+      : "Students will not see this post, its links or its contents before this local date and time. Leave blank to publish it immediately.";
+  const { backdrop, close } = showModal("Post class material", `Choose an assigned class and subject.${weekDescription} If no students are individually assigned to you, the post will be available to everyone enrolled in that subject.`, `
     <form class="admin-form" id="material-form">
       <div class="form-grid">
         <div><label for="material-class">Class</label><select id="material-class" name="classId" required>${assignedClasses.map((classItem) => `<option value="${escapeHTML(classItem.id)}">${escapeHTML(classItem.name)}</option>`).join("")}</select></div>
@@ -1341,7 +1456,7 @@ function showMaterialModal() {
         <div class="full-width hidden" id="material-file-field"><label for="material-file">Choose a file (PDF, DOC, DOCX or ODT)</label><input id="material-file" name="attachment" type="file" accept=".pdf,.doc,.docx,.odt,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.oasis.opendocument.text"><p class="select-help">Maximum file size: 50 MB. Files are saved in this browser only and are not available to students on other devices.</p></div>
         <div class="full-width hidden" id="material-url-field"><label for="material-url" id="material-url-label">Resource link</label><input id="material-url" name="url" type="url" maxlength="500" placeholder="https://"></div>
         <div class="full-width hidden" id="material-due-field"><label for="material-due">Due date (optional)</label><input id="material-due" name="dueDate" type="date"></div>
-        <div class="full-width"><label for="material-available-at">Keep hidden from students until (optional)</label><input id="material-available-at" name="availableAt" type="datetime-local"><p class="select-help">Students will not see this post, its links or its contents before this local date and time. Leave blank to publish it immediately.</p></div>
+        <div class="full-width"><label for="material-available-at">Keep hidden from students until (optional)</label><input id="material-available-at" name="availableAt" type="datetime-local"><p class="select-help">${escapeHTML(availabilityHint)}</p></div>
       </div>
       <div class="admin-form-actions"><button class="button button-dark" type="submit">Publish to class</button><p class="form-message" id="material-error" aria-live="polite"></p></div>
     </form>
@@ -1354,6 +1469,7 @@ function showMaterialModal() {
   const fileField = $("#material-file-field", backdrop);
   const fileInput = $("#material-file", backdrop);
   const urlInput = $("#material-url", backdrop);
+  if (types.some(([value]) => value === options.type)) typeSelect.value = options.type;
   const updateMaterialFields = () => {
     const type = typeSelect.value;
     const needsUrl = type === "video" || type === "dropbox";
@@ -1369,7 +1485,7 @@ function showMaterialModal() {
     $("#material-description-label", backdrop).textContent = needsFile
       ? "Description (optional)"
       : ["quiz", "practice"].includes(type) ? "Questions and instructions"
-        : type === "forum" ? "Forum post" : type === "assignment" ? "Assignment instructions" : "Content / instructions";
+        : type === "forum" ? "General post" : type === "assignment" ? "Assignment instructions" : "Content / instructions";
     $("#material-description", backdrop).placeholder = type === "quiz"
       ? "Write quiz questions and answer choices for your students"
       : type === "practice" ? "Write practice questions for students to work through"
@@ -1384,6 +1500,9 @@ function showMaterialModal() {
   };
   classSelect.addEventListener("change", updateSubjects);
   updateSubjects();
+  if (options.subjectId && [...subjectSelect.options].some((option) => option.value === options.subjectId)) {
+    subjectSelect.value = options.subjectId;
+  }
   typeSelect.addEventListener("change", updateMaterialFields);
   updateMaterialFields();
 
@@ -1401,7 +1520,7 @@ function showMaterialModal() {
     const url = String(formData.get("url") || "").trim();
     const attachment = formData.get("attachment");
     const availableAtInput = String(formData.get("availableAt") || "");
-    const availableAt = availableAtInput ? new Date(availableAtInput).getTime() : null;
+    const requestedAvailableAt = availableAtInput ? new Date(availableAtInput).getTime() : null;
     const error = $("#material-error", backdrop);
     const needsFile = type === "textbook" || type === "exam-paper";
     const allowedFile = attachment instanceof File && /\.(pdf|doc|docx|odt)$/i.test(attachment.name);
@@ -1413,7 +1532,7 @@ function showMaterialModal() {
       error.textContent = "Choose a non-empty PDF, DOC, DOCX or ODT file no larger than 50 MB.";
       return;
     }
-    if (availableAtInput && (!Number.isFinite(availableAt) || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(availableAtInput))) {
+    if (availableAtInput && (!Number.isFinite(requestedAvailableAt) || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(availableAtInput))) {
       error.textContent = "Choose a valid date and time to release this post.";
       return;
     }
@@ -1426,6 +1545,12 @@ function showMaterialModal() {
       return;
     }
     const dueDate = String(formData.get("dueDate") || "");
+    const termNumber = Number.isInteger(options.termNumber) ? options.termNumber : null;
+    const weekNumber = Number.isInteger(options.weekNumber) ? options.weekNumber : null;
+    const weekStart = termNumber && weekNumber
+      ? academicTerms(myClass, [])[termNumber - 1]?.weeks[weekNumber - 1]?.start
+      : null;
+    const availableAt = requestedAvailableAt ?? weekStart?.getTime() ?? null;
     const materialId = `material-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     const material = {
       id: materialId,
@@ -1436,6 +1561,7 @@ function showMaterialModal() {
       dueDate,
       ...(needsFile ? { attachmentId: materialId } : {}),
       ...(availableAt !== null ? { availableAt } : {}),
+      ...(termNumber && weekNumber ? { termNumber, weekNumber } : {}),
       classId,
       subjectId,
       teacherId: currentUser.tpfNumber,
@@ -1465,13 +1591,13 @@ function showMaterialModal() {
   });
 }
 
-function showTermDatesModal() {
+function showTermDatesModal(preselectedClassId = "") {
   const assignedClasses = classes.filter((classItem) => accountClassIds(currentUser).includes(classItem.id));
   if (!assignedClasses.length || currentUser.role !== "teacher") {
     showToast("Ask your administrator to assign your class before setting term dates.");
     return;
   }
-  const initialClass = assignedClasses[0];
+  const initialClass = assignedClasses.find((item) => item.id === preselectedClassId) || assignedClasses[0];
   const termDates = initialClass.termStartDates || [initialClass.termStartDate || "", "", ""];
   const { backdrop, close } = showModal("Set term dates", "Set the start dates for each term in the selected class. Terms 1 and 2 have 14 weeks each; Term 3 has 13 weeks.", `
     <form class="admin-form" id="term-dates-form">
@@ -1485,6 +1611,7 @@ function showTermDatesModal() {
     </form>
   `);
   const classSelect = $("#term-date-class", backdrop);
+  classSelect.value = initialClass.id;
   const updateDates = () => {
     const classItem = assignedClasses.find((item) => item.id === classSelect.value);
     const dates = classItem?.termStartDates || [classItem?.termStartDate || "", "", ""];
@@ -1709,8 +1836,10 @@ $("#current-year").textContent = new Date().getFullYear();
 renderPrograms();
 window.SachinelearnFirebase.loadPublicClasses()
   .then((publicClasses) => {
-    classes = publicClasses;
-    renderPrograms();
+    if (!currentUser) {
+      classes = publicClasses;
+      renderPrograms();
+    }
   })
   .catch((error) => {
     showToast(error.message || "Could not load academy subjects from Firebase.");

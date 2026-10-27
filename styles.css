@@ -403,6 +403,41 @@ body { background: var(--paper); color: var(--ink); }
 .live-class-notice { margin: 16px 0 0; line-height: 1.6; }
 .live-room { height: min(70vh,680px); min-height: 400px; margin: -4px; overflow: hidden; border-radius: 8px; background: #18172d; }
 .live-room iframe { width: 100%; height: 100%; border: 0; }
+.teacher-class-card { cursor: pointer; }
+.teacher-class-card:focus-visible { outline: 2px solid #5e59ca; outline-offset: 2px; }
+.teacher-class-open-hint,.teacher-week-dates { margin: 0 0 12px; color: #777e96; font-size: 10px; }
+.teacher-term-panel { display: grid; gap: 12px; }
+.teacher-term-panel > div { display: grid; max-width: 260px; gap: 6px; }
+.teacher-term-panel label { color: #555d77; font-size: 10px; font-weight: 600; }
+.teacher-term-panel select,.teacher-week-add-row select { min-height: 38px; padding: 8px 10px; border: 1px solid #deddf2; border-radius: 6px; background: #fff; color: #34316f; font: inherit; }
+.teacher-term-panel .teacher-week-dates,.teacher-term-panel .term-dates-prompt { margin: 0; }
+.teacher-weeks { display: grid; gap: 10px; }
+.teacher-week { overflow: hidden; border: 1px solid #e7e7f0; border-radius: 8px; background: #fff; }
+.teacher-week[open] { background: #fafaff; }
+.teacher-week > summary { display: flex; align-items: center; gap: 12px; padding: 13px 15px; color: #484581; cursor: pointer; font-size: 11px; font-weight: 700; list-style: none; }
+.teacher-week > summary::-webkit-details-marker { display: none; }
+.teacher-week > summary::before { width: 7px; height: 7px; border-right: 1px solid #7773bf; border-bottom: 1px solid #7773bf; content: ""; transform: rotate(-45deg); }
+.teacher-week[open] > summary::before { transform: rotate(45deg); }
+.teacher-week > summary small { flex: 1; color: #858aa2; font-size: 9px; font-weight: 400; }
+.teacher-week-content { display: grid; gap: 14px; padding: 0 14px 14px; }
+.teacher-week-content > .teacher-week-dates { margin: 0; }
+.teacher-week-add-row { display: flex; align-items: end; gap: 8px; }
+.teacher-week-add-row label { display: grid; flex: 1; max-width: 280px; gap: 5px; }
+.teacher-week-sections { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; }
+.teacher-week-section { min-width: 0; padding: 12px; border: 1px solid #e8e8f1; border-radius: 7px; background: #fff; }
+.teacher-week-section-heading { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px; }
+.teacher-week-section-heading h4 { margin: 0; color: #42406e; font: 700 11px Manrope,sans-serif; }
+.teacher-week-section-heading span { color: #858aa2; font-size: 9px; }
+.teacher-week-section .empty-state { padding: 10px; font-size: 9px; }
+.teacher-week-section .material-list { grid-template-columns: 1fr; }
+.teacher-week-section .material-card { padding: 11px; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+@media (max-width: 650px) {
+  .teacher-week-sections { grid-template-columns: 1fr; }
+  .teacher-week-add-row { align-items: stretch; flex-direction: column; }
+  .teacher-week-add-row label { max-width: none; }
+  .teacher-week > summary { gap: 8px; padding: 12px 10px; }
+}
 .modal:has(.live-room) { width: min(1000px,100%); }
 .program-card { display: block; color: inherit; text-decoration: none; }
 .program-card:focus-visible { outline: 3px solid #5e59ca; outline-offset: 3px; }
