@@ -38,6 +38,32 @@
     return account.classId ? [account.classId] : [];
   }
 
+  function materialQueries(role, profile, uid) {
+    if (role === "admin") return [db.collection("materials")];
+    if (role === "teacher") {
+      return assignedClassIds(profile).map((classId) => db.collection("materials")
+        .where("classId", "==", classId)
+        .where("teacherUid", "==", uid));
+    }
+    if (role === "student" && profile.classId && Array.isArray(profile.subjectIds) && profile.subjectIds.length) {
+      const subjectGroups = [];
+      for (let index = 0; index < profile.subjectIds.length; index += 30) {
+        subjectGroups.push(profile.subjectIds.slice(index, index + 30));
+      }
+      return subjectGroups.map((subjectIds) => db.collection("materials")
+        .where("classId", "==", profile.classId)
+        .where("subjectId", "in", subjectIds)
+        .where("availableAt", "<=", firebase.firestore.Timestamp.fromMillis(Date.now())));
+    }
+    return [];
+  }
+
+  function materialRecord(document) {
+    const record = { ...document.data(), id: document.id };
+    if (record.availableAt?.toMillis) record.availableAt = record.availableAt.toMillis();
+    return record;
+  }
+
   async function writeRecords(key, items) {
     const collectionName = collections[key];
     if (!collectionName) throw new Error(`Unknown Firebase collection for ${key}.`);
@@ -116,6 +142,58 @@
     return records;
   }
 
+  function watchMaterials(profile, onUpdate, onError) {
+    let active = true;
+    let generation = 0;
+    let refreshTimer;
+    let listeners = [];
+
+    const stopListeners = () => {
+      generation += 1;
+      listeners.forEach((unsubscribe) => unsubscribe());
+      listeners = [];
+    };
+    const refresh = () => {
+      if (!active) return;
+      stopListeners();
+      const currentGeneration = generation;
+      const queries = materialQueries(profile.role, profile, profile.uid);
+      if (!queries.length) {
+        knownIds.set("materials", new Set());
+        onUpdate([]);
+        return;
+      }
+      const recordsByQuery = queries.map(() => []);
+      const receivedInitialSnapshot = queries.map(() => false);
+      listeners = queries.map((query, index) => query.onSnapshot((snapshot) => {
+        if (!active || currentGeneration !== generation) return;
+        recordsByQuery[index] = snapshot.docs.map(materialRecord);
+        receivedInitialSnapshot[index] = true;
+        if (!receivedInitialSnapshot.every(Boolean)) return;
+        const records = [...new Map(recordsByQuery.flat().map((item) => [item.id, item])).values()];
+        knownIds.set("materials", new Set(records.map((item) => item.id)));
+        onUpdate(records);
+      }, onError));
+    };
+
+    refresh();
+    if (profile.role === "student") {
+      refreshTimer = window.setInterval(refresh, 60 * 1000);
+      document.addEventListener("visibilitychange", refreshWhenVisible);
+    }
+
+    function refreshWhenVisible() {
+      if (document.visibilityState === "visible") refresh();
+    }
+
+    return () => {
+      active = false;
+      stopListeners();
+      window.clearInterval(refreshTimer);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
+  }
+
   async function signIn(role, name, identifier, password) {
     const email = role === "admin" ? name.trim() : authEmail(role, identifier);
     const credential = await auth.signInWithEmailAndPassword(email, password);
@@ -157,15 +235,7 @@
       accounts = [profile];
     }
     const teacherClassIds = role === "teacher" ? assignedClassIds(profile) : [];
-    const materialQueries = role === "admin"
-      ? [db.collection("materials")]
-      : role === "teacher"
-        ? teacherClassIds.map((classId) => db.collection("materials").where("classId", "==", classId).where("teacherUid", "==", credential.user.uid))
-        : role === "student" && profile.classId && profile.subjectIds?.length
-          ? [db.collection("materials").where("classId", "==", profile.classId)
-            .where("subjectId", "in", profile.subjectIds.slice(0, 30))
-            .where("availableAt", "<=", firebase.firestore.Timestamp.fromMillis(Date.now()))]
-          : [];
+    const studentMaterialQueries = materialQueries(role, profile, credential.user.uid);
     const liveClassQueries = role === "admin"
       ? [db.collection("liveClasses")]
       : role === "teacher"
@@ -175,7 +245,7 @@
             .where("subjectId", "in", profile.subjectIds.slice(0, 30))]
           : [];
     const [materialResults, liveClassResults] = await Promise.all([
-      Promise.all(materialQueries.map((query) => readCollection("materials", query))),
+      Promise.all(studentMaterialQueries.map((query) => readCollection("materials", query))),
       Promise.all(liveClassQueries.map((query) => readCollection("liveClasses", query))),
     ]);
     const materials = [...new Map(materialResults.flat().map((item) => [item.id, item])).values()];
@@ -227,6 +297,7 @@
     changePassword,
     removeProfile,
     writeRecords,
+    watchMaterials,
     authEmail,
     async loadPublicClasses() {
       return readCollection("classes", db.collection("classes"));

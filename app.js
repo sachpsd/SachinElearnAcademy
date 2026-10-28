@@ -17,6 +17,8 @@ let activeTeacherTermNumber = 1;
 let toastTimer;
 let attachmentDatabase;
 let attachmentObjectUrls = [];
+let unsubscribeMaterials;
+let materialSnapshotSignature = "";
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
@@ -28,6 +30,32 @@ async function saveStorage(key, value) {
   const collectionKey = Object.keys(STORAGE_KEYS).find((name) => STORAGE_KEYS[name] === key);
   if (!collectionKey) throw new Error(`Unknown academy storage key: ${key}.`);
   await window.SachinelearnFirebase.writeRecords(collectionKey, value);
+  if (collectionKey === "materials") materialSnapshotSignature = materialsSignature(value);
+}
+
+function materialsSignature(items) {
+  return JSON.stringify([...items].sort((first, second) => first.id.localeCompare(second.id)));
+}
+
+function watchCurrentMaterials() {
+  unsubscribeMaterials?.();
+  unsubscribeMaterials = undefined;
+  if (!currentUser || !["teacher", "student"].includes(currentUser.role)) return;
+
+  const watchedUid = currentUser.uid;
+  materialSnapshotSignature = materialsSignature(materials);
+  unsubscribeMaterials = window.SachinelearnFirebase.watchMaterials(currentUser, (updatedMaterials) => {
+    if (currentUser?.uid !== watchedUid) return;
+    const updatedSignature = materialsSignature(updatedMaterials);
+    if (updatedSignature === materialSnapshotSignature) return;
+    materials = updatedMaterials;
+    materialSnapshotSignature = updatedSignature;
+    renderPortal();
+  }, (error) => {
+    if (currentUser?.uid === watchedUid) {
+      showToast(`Could not sync class materials: ${error.message || "Check your internet connection and try again."}`);
+    }
+  });
 }
 
 function openAttachmentDatabase() {
@@ -192,6 +220,8 @@ async function signIn(event) {
     classes = data.classes;
     materials = data.materials;
     liveClasses = data.liveClasses;
+    unsubscribeMaterials?.();
+    unsubscribeMaterials = undefined;
   } catch (error) {
     const messages = {
       "auth/invalid-credential": "The email or password is incorrect.",
@@ -209,6 +239,7 @@ async function signIn(event) {
   $$(".access-section, .programs-section, .steps-section, .site-footer").forEach((section) => section.classList.add("hidden"));
   $("#portal").classList.remove("hidden");
   renderPortal();
+  watchCurrentMaterials();
   window.scrollTo({ top: 0, behavior: "smooth" });
   submitButton.disabled = false;
 }
@@ -220,7 +251,10 @@ async function signOut() {
     showToast(error.message || "Could not sign out. Please try again.");
     return;
   }
+  unsubscribeMaterials?.();
+  unsubscribeMaterials = undefined;
   currentUser = null;
+  materialSnapshotSignature = "";
   $("#portal").classList.add("hidden");
   $("#landing").classList.remove("hidden");
   $("#site-header").classList.remove("hidden");
