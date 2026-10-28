@@ -24,7 +24,7 @@ The app is live. Administrator sign-in has not yet been verified with the passwo
 
 ## Teacher weekly planning
 
-Teachers open **My class** and double-click an assigned class to open its term planner. Use **Set term dates** to enter the three term start dates; each term's weeks are calculated as seven-day periods. Select a term, expand a week, choose a content type, and select **Add** to post a lesson, notes, activity questions, quiz, assignment, general post, Dropbox link, or video to that class and week. Week dates control the default student release date, and posts appear under the matching week in the student subject view.
+Teachers open **My class** and double-click an assigned class to open its term planner. Use **Set term dates** to enter the three term start dates; each term's weeks are calculated as seven-day periods. Select a term, expand a week, choose a content type, and select **Add** to post a lesson, notes, activity questions, quiz, assignment, general post, Dropbox link, or video to that class and week. Posts stay grouped under their selected term and week for teachers and students even before term dates are set. Week dates control the default student release date.
 
 Teacher and student portals subscribe to the signed-in user's permitted class materials, so published posts appear without signing out and back in. Student queries retain the Firestore release-time condition; posts scheduled for later are picked up when the page becomes visible or during the periodic refresh. The live subscription is removed on sign-out.
 

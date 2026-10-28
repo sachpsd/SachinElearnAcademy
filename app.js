@@ -419,17 +419,16 @@ function academicTerms(classItem, items) {
       if (weekStart) weekStart.setDate(weekStart.getDate() + index * 7);
       const weekEnd = weekStart ? new Date(weekStart) : null;
       if (weekEnd) weekEnd.setDate(weekEnd.getDate() + 7);
-      const weekItems = weekStart && weekEnd
-        ? items.filter((item) => {
-          if (Number.isInteger(item.termNumber) && Number.isInteger(item.weekNumber)) {
-            return item.termNumber === termIndex + 1 && item.weekNumber === index + 1;
-          }
-          const activityDate = Number.isFinite(item.availableAt) ? item.availableAt : item.createdAt;
-          return Number.isFinite(activityDate)
-            && activityDate >= weekStart.getTime()
-            && activityDate < weekEnd.getTime();
-        })
-        : [];
+      const weekItems = items.filter((item) => {
+        if (Number.isInteger(item.termNumber) && Number.isInteger(item.weekNumber)) {
+          return item.termNumber === termIndex + 1 && item.weekNumber === index + 1;
+        }
+        if (!weekStart || !weekEnd) return false;
+        const activityDate = Number.isFinite(item.availableAt) ? item.availableAt : item.createdAt;
+        return Number.isFinite(activityDate)
+          && activityDate >= weekStart.getTime()
+          && activityDate < weekEnd.getTime();
+      });
       const now = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
       return {
         number: index + 1,
