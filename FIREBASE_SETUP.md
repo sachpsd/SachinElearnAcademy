@@ -43,7 +43,7 @@ Teacher and student portals subscribe to the signed-in user's permitted class ma
    firebase deploy --only firestore:rules,firestore:indexes --project sachinelearn-academy
    ```
 
-   The published rules match `firestore.rules`. Do not create a permissive temporary rule to make the app work.
+   The live deployment status must be verified in Firebase. The premium student-registration update added `pendingRegistrations` rules to this repository after the earlier rules deployment; do not assume that those newer rules are published. Deploy the current rules and indexes, then test registration and administrator approval. Do not create a permissive temporary rule to make the app work.
 
 2. The administrator login has been created, and the owner reports completing the password reset. The old `1234` password is not used.
 
@@ -62,6 +62,16 @@ Teacher and student portals subscribe to the signed-in user's permitted class ma
 4. The Firebase Web API key is restricted in Google Cloud Console to the production referrer `https://sachpsd.github.io/*`. Verify sign-in from the live GitHub Pages URL after completing the password reset.
 
 5. Sign in with the reset password, then verify class and subject setup, teacher/student provisioning, password changes, membership-based access, scheduled release times, and live-class visibility before onboarding students.
+
+## Local integration and deployment
+
+Firebase is loaded directly through the three version-pinned CDN scripts in `index.html`; this static site does not require an npm install or a build step. `firebase-service.js` reuses the default Firebase app for Authentication and Firestore and a separate named app for administrator provisioning. `premium.js` uses another named app for student registration, preserving the administrator's session.
+
+The checked-in `.firebaserc` selects `sachinelearn-academy` for Firebase CLI commands. Authenticate privately with `firebase login`, then deploy only the backend rules and indexes using the command above. GitHub Pages continues to serve the website. Do not use a broad `firebase deploy` command to enable unrelated services.
+
+Never put service-account JSON, private keys, passwords, refresh tokens, or Firebase CLI tokens in website files or Git. The browser configuration is public by design; keep its existing referrer restrictions and enforce data access with Firestore rules. `.gitignore` excludes common local credential files.
+
+Localhost sign-in may be blocked by the existing production-only API-key referrer restriction. Use the production URL for the final authenticated check, or explicitly authorize a development referrer separately. Do not remove the production restriction for a local smoke test.
 
 ## Data and upload limitations
 

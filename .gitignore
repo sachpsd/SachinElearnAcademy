@@ -1,0 +1,14 @@
+# Private deployment credentials and local configuration
+.env
+.env.*
+!.env.example
+*service-account*.json
+*serviceAccount*.json
+firebase-adminsdk*.json
+*.pem
+*.key
+.firebase/
+firebase-debug*.log
+firestore-debug*.log
+ui-debug*.log
+node_modules/
