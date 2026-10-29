@@ -26,6 +26,30 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/classes/$(classId)/members/$(request.auth.uid)).data.subjectIds.hasAny([subjectId]);
     }
 
+    match /pendingRegistrations/{userId} {
+      allow create: if signedIn()
+        && request.auth.uid == userId
+        && !exists(/databases/$(database)/documents/users/$(userId))
+        && request.resource.data.uid == userId
+        && request.resource.data.role == "student"
+        && request.resource.data.status == "pending"
+        && request.resource.data.keys().hasOnly([
+          "uid", "role", "name", "femisId", "contactEmail", "status", "requestedAt", "updatedAt"
+        ]);
+      allow read: if admin() || (signedIn() && request.auth.uid == userId);
+      allow update: if admin()
+        || (signedIn()
+          && request.auth.uid == userId
+          && resource.data.status == "pending"
+          && request.resource.data.uid == resource.data.uid
+          && request.resource.data.role == "student"
+          && request.resource.data.status == "pending"
+          && request.resource.data.keys().hasOnly([
+            "uid", "role", "name", "femisId", "contactEmail", "status", "requestedAt", "updatedAt"
+          ]));
+      allow delete: if admin();
+    }
+
     match /users/{userId} {
       allow read: if admin()
         || (signedIn() && request.auth.uid == userId)
