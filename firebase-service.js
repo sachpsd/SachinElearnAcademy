@@ -4,10 +4,15 @@
     throw new Error("Firebase is not configured. Check firebase-config.js and the Firebase SDK scripts.");
   }
 
-  const app = firebase.initializeApp(config);
+  function getOrInitializeApp(name = "[DEFAULT]") {
+    return firebase.apps.find((existingApp) => existingApp.name === name)
+      || firebase.initializeApp(config, name);
+  }
+
+  const app = getOrInitializeApp();
   const auth = app.auth();
   const db = app.firestore();
-  const provisioningApp = firebase.initializeApp(config, "SachinelearnProvisioning");
+  const provisioningApp = getOrInitializeApp("SachinelearnProvisioning");
   const provisioningAuth = provisioningApp.auth();
   const collections = {
     accounts: "users",
