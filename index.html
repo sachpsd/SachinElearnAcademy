@@ -4,17 +4,19 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#28234f">
-    <title>Sachinelearn Academy | Learn for what’s next</title>
+    <title>Sachinelearn Academy Premium | Learn for what’s next</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="premium.css?v=2">
     <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
     <script src="firebase-config.js"></script>
     <script src="firebase-service.js?v=live-material-sync-v1" defer></script>
     <script src="app.js?v=week-material-grouping-v1" defer></script>
+    <script src="premium.js?v=2" defer></script>
   </head>
   <body>
     <header class="site-header" id="site-header">
@@ -32,19 +34,20 @@
     <main>
       <section class="landing" id="landing">
         <div class="hero-copy">
+          <div class="premium-badge">Premium learning platform</div>
           <div class="eyebrow"><span class="eyebrow-dot"></span> YOUR FUTURE, IN YOUR HANDS</div>
           <h1>Learn boldly.<br><span>Go further.</span></h1>
-          <p class="hero-description">Find your focus, build skills that matter, and make progress you can feel—one lesson at a time.</p>
-          <div class="hero-actions"><a class="button button-dark hero-primary" href="#login">Start learning <span aria-hidden="true">→</span></a><a class="hero-secondary" href="#programs">Explore subjects <span aria-hidden="true">↘</span></a></div>
+          <p class="hero-description">A complete digital academy for students and teachers—lessons, activities, assignments, live classes and weekly learning in one premium workspace.</p>
+          <div class="hero-actions"><a class="button button-dark hero-primary" href="#login">Start learning <span aria-hidden="true">→</span></a><button type="button" class="premium-signup-link" onclick="window.SachinelearnPremium?.showStudentRegistration()">Create student account</button><a class="hero-secondary" href="#programs">Explore subjects <span aria-hidden="true">↘</span></a></div>
           <div class="hero-proof">
             <span class="proof-star" aria-hidden="true">✦</span>
-            <p><strong>Your learning space, all in one place.</strong><br>Lessons, activities and teacher support, ready when you are.</p>
+            <p><strong>Your entire learning journey, beautifully organised.</strong><br>Weekly lessons, teacher support and progress—ready wherever you learn.</p>
           </div>
         </div>
 
         <div class="hero-art" aria-label="A preview of the student learning dashboard">
           <div class="hero-glow"></div>
-          <div class="hero-float-label"><span>✦</span> YOUR NEXT CHAPTER</div>
+          <div class="hero-float-label"><span>✦</span> PREMIUM LEARNING SPACE</div>
           <div class="learning-preview">
             <div class="preview-top"><span class="preview-logo"><i></i><i></i><i></i></span><span>MY LEARNING SPACE</span><span class="preview-avatar">S</span></div>
             <div class="preview-welcome"><span>READY WHEN YOU ARE</span><strong>Small steps.<br>Big possibilities.</strong><p>Keep your momentum going.</p></div>
@@ -62,6 +65,35 @@
         <div><span class="promise-icon">01</span><span><strong>Learn with purpose</strong><small>Focus on the subjects that move you.</small></span></div>
         <div><span class="promise-icon">02</span><span><strong>Stay on track</strong><small>See your lessons and weekly progress.</small></span></div>
         <div><span class="promise-icon">03</span><span><strong>Keep growing</strong><small>Get guidance from your teachers.</small></span></div>
+      </section>
+
+      <section class="premium-trust-strip" aria-label="Premium platform highlights">
+        <div class="premium-trust-card"><strong>Secure accounts</strong><span>Firebase-powered sign in and role access</span></div>
+        <div class="premium-trust-card"><strong>Weekly learning</strong><span>Terms, weeks, lessons and activities together</span></div>
+        <div class="premium-trust-card"><strong>Teacher workspace</strong><span>Post learning materials and schedule live classes</span></div>
+        <div class="premium-trust-card"><strong>Admin control</strong><span>Approve learners, classes, subjects and assignments</span></div>
+      </section>
+
+      <section class="premium-showcase" aria-label="Premium learning experience">
+        <div class="premium-showcase-copy">
+          <span class="premium-badge">Built for real classrooms</span>
+          <h2>Everything your academy needs. One learning space.</h2>
+          <p>Sachinelearn Academy brings the structure of a full LMS into a clean experience that students can understand immediately.</p>
+          <div class="premium-feature-list">
+            <div class="premium-feature-item"><span class="premium-feature-icon">✓</span><span><strong>Student approval workflow</strong><small>New learners register and wait for administrator approval before access.</small></span></div>
+            <div class="premium-feature-item"><span class="premium-feature-icon">✓</span><span><strong>Teacher term planning</strong><small>Organise content by Term 1–3 and individual teaching weeks.</small></span></div>
+            <div class="premium-feature-item"><span class="premium-feature-icon">✓</span><span><strong>Live learning</strong><small>Schedule online classes directly from the teacher portal.</small></span></div>
+            <div class="premium-feature-item"><span class="premium-feature-icon">✓</span><span><strong>Role-based dashboards</strong><small>Students, teachers and administrators each see the tools they need.</small></span></div>
+          </div>
+        </div>
+        <div class="premium-showcase-panel">
+          <div class="premium-mini-dashboard">
+            <div class="premium-mini-top"><div><span class="portal-eyebrow">STUDENT DASHBOARD</span><h3>Your week at a glance</h3></div><span class="premium-mini-chip">72% complete</span></div>
+            <div class="premium-mini-card"><strong>Computer Studies · Week 6</strong><span>2 lessons · 1 activity · 1 assignment</span><div class="premium-progress"><span></span></div></div>
+            <div class="premium-mini-grid"><div class="premium-mini-card"><strong>Next lesson</strong><span>Database fundamentals</span></div><div class="premium-mini-card"><strong>Live class</strong><span>Friday · 7:00 PM</span></div></div>
+            <div class="premium-mini-card"><strong>Stay focused</strong><span>Your teacher’s latest learning materials appear automatically when released.</span></div>
+          </div>
+        </div>
       </section>
 
       <section class="access-section" id="login">
@@ -99,7 +131,7 @@
             <p id="login-error" class="form-message" aria-live="polite"></p>
             <button class="button button-dark login-submit" type="submit">Sign in <span aria-hidden="true">→</span></button>
           </form>
-          <p class="login-help">Need an account? Ask your academy administrator to register you.</p>
+          <p class="login-help">New students can create an account below. Access begins after administrator approval.</p>
         </div>
       </section>
 
@@ -114,13 +146,13 @@
       <section class="steps-section" id="how-it-works">
         <div class="steps-heading"><span class="eyebrow"><span class="eyebrow-dot"></span> YOUR JOURNEY STARTS HERE</span><h2>One step at a time.<br><span>All the way forward.</span></h2></div>
         <div class="steps-grid">
-          <article class="step-item"><span class="step-number">01</span><h3>Find your focus</h3><p>Explore a subject that sparks your curiosity and fits your goals.</p></article>
-          <article class="step-item"><span class="step-number">02</span><h3>Learn at your pace</h3><p>Follow your courses and stay on top of assignments in your portal.</p></article>
-          <article class="step-item"><span class="step-number">03</span><h3>Keep moving forward</h3><p>Build momentum with guidance from teachers and your community.</p></article>
+          <article class="step-item"><span class="step-number">01</span><h3>Create your account</h3><p>Register with your student details and send your request for approval.</p></article>
+          <article class="step-item"><span class="step-number">02</span><h3>Join your class</h3><p>Your administrator approves your profile and assigns your class and subjects.</p></article>
+          <article class="step-item"><span class="step-number">03</span><h3>Keep moving forward</h3><p>Learn by term and week with lessons, activities, assignments and teacher support.</p></article>
         </div>
       </section>
     </main>
-    <footer class="site-footer"><a class="brand footer-brand" href="#"><span class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></span><span class="brand-name">sachinelearn<span>academy</span></span></a><span>Make room for what’s next.</span><span>© <span id="current-year"></span> Sachinelearn Academy</span></footer>
+    <footer class="site-footer"><a class="brand footer-brand" href="#"><span class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></span><span class="brand-name">sachinelearn<span>academy</span></span></a><span>Premium learning, built for progress.</span><span>© <span id="current-year"></span> Sachinelearn Academy</span></footer>
 
     <main class="portal hidden" id="portal">
       <aside class="portal-sidebar">
